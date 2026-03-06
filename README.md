@@ -1,18 +1,70 @@
-# Relief Ledger
+🌟 Relief Ledger
 
-MERN stack application for transparent relief fund management.
+Relief Ledger is a transparent relief fund management platform designed to ensure accountability, security, and visibility in humanitarian aid distribution. It allows donors to contribute, admins to verify requests, and recipients to receive aid, while maintaining a publicly auditable ledger of all transactions.
 
-## Structure
+🛠 Features
+👤 User & Access Management
 
-- `backend/` - Express server with MongoDB via Mongoose
-- `frontend/` - React client app
+✅ Secure User Registration & Login
 
-## Getting Started
+✅ Role-based Interface (Admin, Donor, Recipient)
 
-1. Install MongoDB and set `MONGO_URI` in `backend/.env`.
-2. `cd backend && npm install && npm run dev`
-3. In another terminal: `cd frontend && npm install && npm start`
+✅ Identity & Document Verification
 
-Registration and login pages are available at `http://localhost:3000`.
+💰 Donations & Fund Management
 
-The frontend includes styled forms and a header component; edit `src/App.css` to tweak appearance.
+💸 Donation Interface for Donors
+
+📈 Real-time Ledger Updates
+
+🔒 Conditional Payments After Verification
+
+🤖 Automated Fund Release
+
+👜 Recipient Wallets
+
+🧾 Exportable Donation Receipts
+
+📜 Records & Transparency
+
+💾 Persistent Storage of Transactions
+
+📜 Transaction History View
+
+🌐 Public Transparency Dashboard
+
+🛡 Fraud Detection & Security
+
+⚠️ Automatic Detection of Suspicious Transactions
+
+🔔 Admin Alerts for Important Events
+
+📝 Aid Application & Tracking
+
+📝 Aid Application Submission
+
+⏱ Real-time Application Status
+
+✔️ Document Approval Workflow
+
+📊 Reporting & Monitoring
+
+👀 Ledger Activity Monitoring
+
+📊 Exportable Reports on Fund Usage
+
+🌐 Optional / Supporting Features
+
+🌍 Multi-Language Support
+
+🔗 QR Code Donation
+
+💻 Tech Stack
+
+Backend: Node.js, Express.js, MongoDB
+
+Frontend: React.js
+
+Version Control: GitHub
+
+Project Management: Jira
