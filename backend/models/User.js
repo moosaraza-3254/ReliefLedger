@@ -23,6 +23,14 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isFrozen: {
+    type: Boolean,
+    default: false,
+  },
+  frozenAt: {
+    type: Date,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
