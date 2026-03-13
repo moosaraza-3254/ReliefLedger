@@ -163,7 +163,7 @@ exports.verifyDocument = async (req, res) => {
 // @access  Private/Admin
 exports.getPendingApplications = async (req, res) => {
   try {
-    const applications = await Application.find({ status: 'PENDING' })
+    const applications = await Application.find({ status: { $in: ['PENDING', 'WITHDRAWN'] } })
       .populate('recipient_id', 'name email')
       .sort({ createdAt: -1 });
 

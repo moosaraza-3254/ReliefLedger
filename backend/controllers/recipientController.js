@@ -1,7 +1,33 @@
+const fs = require('fs/promises');
+const path = require('path');
 const Application = require('../models/Application');
 const Document = require('../models/Document');
 const Transaction = require('../models/Transaction');
 const { v4: uuidv4 } = require('uuid');
+
+const buildDocumentFilter = (userId, documentType, applicationId) => ({
+  user_id: userId,
+  document_type: documentType,
+  application_id: applicationId || null
+});
+
+const removeStoredFile = async (filePath) => {
+  if (!filePath) {
+    return;
+  }
+
+  const resolvedPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(__dirname, '..', filePath);
+
+  try {
+    await fs.unlink(resolvedPath);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.error(`Failed to remove file ${resolvedPath}:`, err.message);
+    }
+  }
+};
 
 // @desc    Submit relief application
 // @route   POST /api/recipient/apply
@@ -9,6 +35,22 @@ const { v4: uuidv4 } = require('uuid');
 exports.submitApplication = async (req, res) => {
   try {
     const { amount_requested, reason } = req.body;
+    const requiredDocumentTypes = ['ID_PROOF', 'ADDRESS_PROOF', 'INCOME_PROOF'];
+
+    const uploadedDocuments = await Document.find({
+      user_id: req.user.userId,
+      document_type: { $in: requiredDocumentTypes }
+    }).select('document_type');
+
+    const uploadedTypes = new Set(uploadedDocuments.map(doc => doc.document_type));
+    const missingTypes = requiredDocumentTypes.filter(type => !uploadedTypes.has(type));
+
+    if (missingTypes.length > 0) {
+      return res.status(400).json({
+        msg: `Please upload all required documents before applying. Missing: ${missingTypes.join(', ')}`,
+        missingDocuments: missingTypes
+      });
+    }
 
     if (!amount_requested || amount_requested <= 0) {
       return res.status(400).json({ msg: 'Please provide a valid amount' });
@@ -74,6 +116,10 @@ exports.uploadDocument = async (req, res) => {
       }
     }
 
+    const existingDocuments = await Document.find(
+      buildDocumentFilter(req.user.userId, document_type, application_id)
+    );
+
     const document = new Document({
       user_id: req.user.userId,
       application_id: application_id || null,
@@ -86,6 +132,13 @@ exports.uploadDocument = async (req, res) => {
     });
 
     await document.save();
+
+    if (existingDocuments.length > 0) {
+      await Promise.all(existingDocuments.map(existingDoc => removeStoredFile(existingDoc.file_path)));
+      await Document.deleteMany({
+        _id: { $in: existingDocuments.map(existingDoc => existingDoc._id) }
+      });
+    }
 
     res.json({
       msg: 'Document uploaded successfully',
@@ -104,12 +157,48 @@ exports.uploadDocument = async (req, res) => {
   }
 };
 
+// @desc    Delete my uploaded document
+// @route   DELETE /api/recipient/documents/:documentId
+// @access  Private/Recipient
+exports.deleteDocument = async (req, res) => {
+  try {
+    const document = await Document.findOne({
+      _id: req.params.documentId,
+      user_id: req.user.userId
+    });
+
+    if (!document) {
+      return res.status(404).json({ msg: 'Document not found' });
+    }
+
+    const matchingDocuments = await Document.find(
+      buildDocumentFilter(req.user.userId, document.document_type, document.application_id)
+    );
+
+    await Promise.all(matchingDocuments.map(existingDoc => removeStoredFile(existingDoc.file_path)));
+    await Document.deleteMany({
+      _id: { $in: matchingDocuments.map(existingDoc => existingDoc._id) }
+    });
+
+    res.json({
+      msg: 'Document removed successfully',
+      removedCount: matchingDocuments.length
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
 // @desc    Get my applications
 // @route   GET /api/recipient/applications
 // @access  Private/Recipient
 exports.getApplications = async (req, res) => {
   try {
-    const applications = await Application.find({ recipient_id: req.user.userId })
+    const applications = await Application.find({
+      recipient_id: req.user.userId,
+      status: { $ne: 'WITHDRAWN' }
+    })
       .sort({ createdAt: -1 });
 
     const applicationsWithDetails = await Promise.all(
@@ -134,6 +223,41 @@ exports.getApplications = async (req, res) => {
 
     res.json({
       applications: applicationsWithDetails
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// @desc    Withdraw my application
+// @route   DELETE /api/recipient/application/:applicationId
+// @access  Private/Recipient
+exports.withdrawApplication = async (req, res) => {
+  try {
+    const application = await Application.findOne({
+      _id: req.params.applicationId,
+      recipient_id: req.user.userId
+    });
+
+    if (!application) {
+      return res.status(404).json({ msg: 'Application not found' });
+    }
+
+    if (application.status !== 'PENDING') {
+      return res.status(400).json({ msg: 'Only pending applications can be withdrawn' });
+    }
+
+    application.status = 'WITHDRAWN';
+    application.updatedAt = new Date();
+    await application.save();
+
+    res.json({
+      msg: 'Application withdrawn successfully',
+      application: {
+        id: application._id,
+        status: application.status
+      }
     });
   } catch (err) {
     console.error(err.message);
