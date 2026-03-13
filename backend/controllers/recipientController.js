@@ -295,22 +295,26 @@ exports.getDocuments = async (req, res) => {
 // @access  Private/Recipient
 exports.getWallet = async (req, res) => {
   try {
-    // Get all disbursed applications (funds actually sent to wallet)
-    const disburgedApps = await Application.find({
-      recipient_id: req.user.userId,
-      status: 'DISBURSED'
+    // Incoming donor-to-recipient transfers
+    const incomingTransactions = await Transaction.find({
+      to_user: req.user.userId,
+      type: 'DONATION',
+      status: 'COMPLETED'
     });
 
-    const balance = disburgedApps.reduce((sum, app) => sum + app.amount_disbursed, 0);
-    const total = disburgedApps.reduce((sum, app) => sum + app.amount_disbursed, 0);
+    const balance = incomingTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const total = incomingTransactions.reduce((sum, tx) => sum + tx.amount, 0);
 
-    // Get pending applications (approved but not yet disbursed)
-    const pendingApps = await Application.find({
+    // Remaining unmet amount in approved applications
+    const approvedApps = await Application.find({
       recipient_id: req.user.userId,
       status: 'APPROVED'
     });
 
-    const pending = pendingApps.reduce((sum, app) => sum + app.amount_requested, 0);
+    const pending = approvedApps.reduce((sum, app) => {
+      const remaining = Math.max((app.amount_requested || 0) - (app.amount_disbursed || 0), 0);
+      return sum + remaining;
+    }, 0);
 
     res.json({
       balance,

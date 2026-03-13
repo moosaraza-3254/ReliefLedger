@@ -530,17 +530,6 @@ export default function AdminDashboard() {
     } catch (err) { console.error('Error reviewing application:', err); }
   };
 
-  const handleDisburseFunds = async (appId, amount) => {
-    try {
-      await adminAPI.disburseFunds(appId, amount);
-      setMessage('✓ Funds disbursed successfully');
-      await loadAdminData();
-    } catch (err) {
-      console.error('Error disbursing funds:', err);
-      setMessage(`✗ ${err.msg || 'Error disbursing funds'}`);
-    }
-  };
-
   const userGroups = [
     { key: 'ADMIN', title: 'Admins', users: users.filter(user => user.role === 'ADMIN') },
     { key: 'DONOR', title: 'Donors', users: users.filter(user => user.role === 'DONOR') },
@@ -702,14 +691,14 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <div className="ad-sub-title blue">Ready for Disbursement ({approvedApplications.length})</div>
+                <div className="ad-sub-title blue">Approved Applications Visible to Donors ({approvedApplications.length})</div>
                 {approvedApplications.length === 0 ? (
-                  <div className="ad-empty"><div className="ad-empty-icon">💰</div>No approved applications ready for disbursement</div>
+                  <div className="ad-empty"><div className="ad-empty-icon">💰</div>No approved applications waiting for donor funding</div>
                 ) : (
                   <div className="ad-table-wrap">
                     <table className="ad-table">
                       <thead>
-                        <tr><th>Recipient</th><th>Amount</th><th>Reason</th><th>Approved</th><th>Action</th></tr>
+                        <tr><th>Recipient</th><th>Amount</th><th>Reason</th><th>Approved</th><th>Status</th></tr>
                       </thead>
                       <tbody>
                         {approvedApplications.map(app => (
@@ -719,9 +708,7 @@ export default function AdminDashboard() {
                             <td>{app.reason.length > 50 ? `${app.reason.substring(0, 50)}...` : app.reason}</td>
                             <td>{new Date(app.approvedAt).toLocaleDateString()}</td>
                             <td>
-                              <button className="ad-btn blue" onClick={(e) => { e.stopPropagation(); handleDisburseFunds(app.id, app.amount_requested); }}>
-                                Disburse ${app.amount_requested}
-                              </button>
+                              <span className="ad-badge ad-badge-verified">Awaiting Donor Funding</span>
                             </td>
                           </tr>
                         ))}

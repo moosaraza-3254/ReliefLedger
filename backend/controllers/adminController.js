@@ -63,7 +63,7 @@ exports.getSystemStats = async (req, res) => {
 
     const allApplications = await Application.find();
     const approvedApps = allApplications.filter(a => a.status === 'APPROVED');
-    const totalDisbursed = approvedApps.reduce((sum, a) => sum + a.amount_disbursed, 0);
+    const totalDisbursed = allApplications.reduce((sum, a) => sum + (a.amount_disbursed || 0), 0);
 
     const pendingApps = await Application.countDocuments({ status: 'PENDING' });
     const onHoldApps = await Application.countDocuments({ status: 'ON_HOLD' });

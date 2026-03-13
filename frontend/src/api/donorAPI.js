@@ -1,9 +1,18 @@
 import axios from '../api';
 
 const donorAPI = {
-  makeDonation: async (amount, message = '') => {
+  getApprovedApplications: async () => {
     try {
-      const response = await axios.post('/api/donor/donate', { amount, message });
+      const response = await axios.get('/api/donor/approved-applications');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  makeDonation: async (application_id, amount, message = '') => {
+    try {
+      const response = await axios.post('/api/donor/donate', { application_id, amount, message });
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
