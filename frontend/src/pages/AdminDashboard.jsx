@@ -270,6 +270,7 @@ const styles = `
   .ad-badge-verified { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.2); }
   .ad-badge-flagged { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
   .ad-badge-withdrawn { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+  .ad-badge-rejected { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
 
   /* Action Buttons */
   .ad-btn {
@@ -536,6 +537,13 @@ export default function AdminDashboard() {
     { key: 'RECIPIENT', title: 'Recipients', users: users.filter(user => user.role === 'RECIPIENT') },
   ];
 
+  const getApplicationStatusBadgeClass = (status) => {
+    if (status === 'APPROVED' || status === 'DISBURSED') return 'ad-badge-verified';
+    if (status === 'REJECTED') return 'ad-badge-rejected';
+    if (status === 'WITHDRAWN') return 'ad-badge-withdrawn';
+    return 'ad-badge-pending';
+  };
+
   if (loading) {
     return (
       <>
@@ -691,14 +699,14 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <div className="ad-sub-title blue">Approved Applications Visible to Donors ({approvedApplications.length})</div>
+                <div className="ad-sub-title blue">Closed Applications ({approvedApplications.length})</div>
                 {approvedApplications.length === 0 ? (
-                  <div className="ad-empty"><div className="ad-empty-icon">💰</div>No approved applications waiting for donor funding</div>
+                  <div className="ad-empty"><div className="ad-empty-icon">📁</div>No closed applications yet</div>
                 ) : (
                   <div className="ad-table-wrap">
                     <table className="ad-table">
                       <thead>
-                        <tr><th>Recipient</th><th>Amount</th><th>Reason</th><th>Approved</th><th>Status</th></tr>
+                        <tr><th>Recipient</th><th>Amount</th><th>Reason</th><th>Closed</th><th>Status</th></tr>
                       </thead>
                       <tbody>
                         {approvedApplications.map(app => (
@@ -706,9 +714,9 @@ export default function AdminDashboard() {
                             <td style={{ color: '#f1f5f9' }}>{app.recipient.name} <span style={{ color: '#475569' }}>({app.recipient.email})</span></td>
                             <td style={{ color: '#4ade80', fontWeight: 600 }}>${app.amount_requested}</td>
                             <td>{app.reason.length > 50 ? `${app.reason.substring(0, 50)}...` : app.reason}</td>
-                            <td>{new Date(app.approvedAt).toLocaleDateString()}</td>
+                            <td>{new Date(app.closedAt).toLocaleDateString()}</td>
                             <td>
-                              <span className="ad-badge ad-badge-verified">Awaiting Donor Funding</span>
+                              <span className={`ad-badge ${getApplicationStatusBadgeClass(app.status)}`}>{app.status}</span>
                             </td>
                           </tr>
                         ))}
@@ -725,7 +733,7 @@ export default function AdminDashboard() {
                   <>
                     <div className="ad-detail-header">
                       <div className="ad-detail-title">Application Details</div>
-                      <span className={`ad-badge ${selectedApplication.status === 'WITHDRAWN' ? 'ad-badge-withdrawn' : 'ad-badge-pending'}`}>
+                      <span className={`ad-badge ${getApplicationStatusBadgeClass(selectedApplication.status)}`}>
                         {selectedApplication.status}
                       </span>
                     </div>

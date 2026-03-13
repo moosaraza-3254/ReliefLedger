@@ -165,7 +165,7 @@ exports.verifyDocument = async (req, res) => {
 // @access  Private/Admin
 exports.getPendingApplications = async (req, res) => {
   try {
-    const applications = await Application.find({ status: { $in: ['PENDING', 'WITHDRAWN'] } })
+    const applications = await Application.find({ status: 'PENDING' })
       .populate('recipient_id', 'name email')
       .sort({ createdAt: -1 });
 
@@ -202,14 +202,14 @@ exports.getPendingApplications = async (req, res) => {
   }
 };
 
-// @desc    Get all approved applications (ready for disbursement)
+// @desc    Get all closed applications
 // @route   GET /api/admin/applications/approved
 // @access  Private/Admin
 exports.getApprovedApplications = async (req, res) => {
   try {
-    const applications = await Application.find({ status: 'APPROVED' })
+    const applications = await Application.find({ status: { $in: ['APPROVED', 'REJECTED', 'WITHDRAWN'] } })
       .populate('recipient_id', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ updatedAt: -1 });
 
     const applicationsWithDocuments = await Promise.all(
       applications
@@ -223,7 +223,7 @@ exports.getApprovedApplications = async (req, res) => {
           amount_requested: a.amount_requested,
           reason: a.reason,
           status: a.status,
-          approvedAt: a.updatedAt,
+          closedAt: a.updatedAt,
           documents: documents.map((d) => ({
             id: d._id,
             type: d.document_type,
