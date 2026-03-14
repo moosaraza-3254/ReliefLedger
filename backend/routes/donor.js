@@ -3,7 +3,12 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const authorizeRole = require('../middleware/authorizeRole');
 const checkFrozen = require('../middleware/checkFrozen');
-const { makeDonation, getDonationHistory, getReceipt } = require('../controllers/donorController');
+const { makeDonation, getDonationHistory, getReceipt, getApprovedApplicationsForFunding } = require('../controllers/donorController');
+
+// @route   GET api/donor/approved-applications
+// @desc    Get approved applications available for funding
+// @access  Private/Donor
+router.get('/approved-applications', auth, authorizeRole('DONOR'), getApprovedApplicationsForFunding);
 
 // @route   POST api/donor/donate
 // @desc    Make a donation

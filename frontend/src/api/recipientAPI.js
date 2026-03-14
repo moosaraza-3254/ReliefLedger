@@ -13,6 +13,15 @@ const recipientAPI = {
     }
   },
 
+  withdrawApplication: async (application_id) => {
+    try {
+      const response = await axios.delete(`/api/recipient/application/${application_id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
   uploadDocument: async (document_type, file, application_id = null) => {
     try {
       const formData = new FormData();
@@ -27,6 +36,15 @@ const recipientAPI = {
           'Content-Type': 'multipart/form-data',
         },
       });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  deleteDocument: async (documentId) => {
+    try {
+      const response = await axios.delete(`/api/recipient/documents/${documentId}`);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;

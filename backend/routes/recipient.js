@@ -7,6 +7,8 @@ const upload = require('../middleware/upload');
 const {
   submitApplication,
   uploadDocument,
+  deleteDocument,
+  withdrawApplication,
   getApplications,
   getDocuments,
   getWallet,
@@ -18,10 +20,20 @@ const {
 // @access  Private/Recipient
 router.post('/apply', auth, authorizeRole('RECIPIENT'), checkFrozen, submitApplication);
 
+// @route   DELETE api/recipient/application/:applicationId
+// @desc    Withdraw my application
+// @access  Private/Recipient
+router.delete('/application/:applicationId', auth, authorizeRole('RECIPIENT'), checkFrozen, withdrawApplication);
+
 // @route   POST api/recipient/upload-document
 // @desc    Upload document
 // @access  Private/Recipient
 router.post('/upload-document', auth, authorizeRole('RECIPIENT'), upload.single('document'), uploadDocument);
+
+// @route   DELETE api/recipient/documents/:documentId
+// @desc    Delete uploaded document
+// @access  Private/Recipient
+router.delete('/documents/:documentId', auth, authorizeRole('RECIPIENT'), checkFrozen, deleteDocument);
 
 // @route   GET api/recipient/applications
 // @desc    Get my applications

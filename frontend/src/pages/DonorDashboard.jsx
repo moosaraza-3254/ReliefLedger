@@ -321,6 +321,8 @@ const styles = `
 export default function DonorDashboard() {
   const [donations, setDonations] = useState({ totalDonated: 0, donationCount: 0 });
   const [donationHistory, setDonationHistory] = useState([]);
+  const [approvedApplications, setApprovedApplications] = useState([]);
+  const [selectedApplicationId, setSelectedApplicationId] = useState('');
   const [donationAmount, setDonationAmount] = useState('');
   const [donationMessage, setDonationMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -333,9 +335,20 @@ export default function DonorDashboard() {
   const loadDonationData = async () => {
     try {
       setLoading(true);
-      const data = await donorAPI.getDonationHistory();
-      setDonations({ totalDonated: data.totalDonated, donationCount: data.donationCount });
-      setDonationHistory(data.donations);
+      const [historyData, approvedData] = await Promise.all([
+        donorAPI.getDonationHistory(),
+        donorAPI.getApprovedApplications()
+      ]);
+
+      setDonations({ totalDonated: historyData.totalDonated, donationCount: historyData.donationCount });
+      setDonationHistory(historyData.donations);
+      setApprovedApplications(approvedData.applications);
+
+      if (approvedData.applications.length > 0) {
+        setSelectedApplicationId(current => current || approvedData.applications[0].id);
+      } else {
+        setSelectedApplicationId('');
+      }
     } catch (err) {
       setError(err.msg || 'Failed to load donation data');
     } finally {
@@ -349,12 +362,29 @@ export default function DonorDashboard() {
     setMessage('');
     setError('');
     try {
+      if (!selectedApplicationId) {
+        setError('Please select an approved application to fund');
+        return;
+      }
+
       if (!donationAmount || parseFloat(donationAmount) <= 0) {
         setError('Please enter a valid amount');
         return;
       }
-      const result = await donorAPI.makeDonation(parseFloat(donationAmount), donationMessage);
-      setMessage(`✓ Donation of $${donationAmount} successful! Receipt: ${result.donation.receipt_id}`);
+
+      const selectedApplication = approvedApplications.find(application => application.id === selectedApplicationId);
+      if (!selectedApplication) {
+        setError('Selected application is no longer available');
+        return;
+      }
+
+      if (parseFloat(donationAmount) > selectedApplication.remaining_amount) {
+        setError(`Maximum allowed amount is $${selectedApplication.remaining_amount}`);
+        return;
+      }
+
+      const result = await donorAPI.makeDonation(selectedApplicationId, parseFloat(donationAmount), donationMessage);
+      setMessage(`✓ Donation of $${donationAmount} sent to ${result.donation.recipient.name}. Receipt: ${result.donation.receipt_id}`);
       setDonationAmount('');
       setDonationMessage('');
       await loadDonationData();
@@ -409,11 +439,49 @@ export default function DonorDashboard() {
 
           {/* Donate Form */}
           <div className="dd-section">
-            <div className="dd-section-title">Make a Donation</div>
+            <div className="dd-section-title">Fund Approved Recipient Applications</div>
             <div className="dd-section-divider" />
             {message && <div className="dd-success">{message}</div>}
             {error && <div className="dd-error">{error}</div>}
+            {approvedApplications.length === 0 ? (
+              <div className="dd-empty">
+                <div className="dd-empty-icon">🕒</div>
+                No approved applications are waiting for donor funding right now.
+              </div>
+            ) : (
+              <>
+                <ul className="dd-list" style={{ marginBottom: '16px' }}>
+                  {approvedApplications.map(application => (
+                    <li key={application.id} className="dd-list-item" style={{ alignItems: 'center' }}>
+                      <div>
+                        <div className="dd-donation-amount" style={{ fontSize: '1rem' }}>{application.recipient.name}</div>
+                        <div className="dd-donation-meta">
+                          Needs ${application.amount_requested} · Funded ${application.funded_amount} · Remaining ${application.remaining_amount}
+                        </div>
+                        <div className="dd-donation-msg" style={{ fontStyle: 'normal' }}>{application.reason}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
             <form className="dd-form" onSubmit={handleDonate}>
+              <div className="dd-field">
+                <label className="dd-label">Select Approved Application</label>
+                <div className="dd-input-wrap">
+                  <select
+                    className="dd-input"
+                    value={selectedApplicationId}
+                    onChange={(e) => setSelectedApplicationId(e.target.value)}
+                    disabled={submitting}
+                  >
+                    {approvedApplications.map(application => (
+                      <option key={application.id} value={application.id}>
+                        {application.recipient.name} - Remaining ${application.remaining_amount}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div className="dd-field">
                 <label className="dd-label">Amount (USD)</label>
                 <div className="dd-input-wrap">
@@ -443,9 +511,11 @@ export default function DonorDashboard() {
                 </div>
               </div>
               <button className="dd-btn" type="submit" disabled={submitting}>
-                {submitting ? 'Processing…' : 'Donate Now →'}
+                {submitting ? 'Processing…' : 'Send Direct Donation →'}
               </button>
             </form>
+              </>
+            )}
           </div>
 
           {/* History */}
@@ -465,6 +535,7 @@ export default function DonorDashboard() {
                       <div className="dd-donation-amount">${donation.amount}</div>
                       <div className="dd-donation-meta">
                         {new Date(donation.date).toLocaleDateString()} · {donation.status}
+                        {donation.recipient ? ` · Recipient: ${donation.recipient.name}` : ''}
                       </div>
                       {donation.message && (
                         <div className="dd-donation-msg">"{donation.message}"</div>

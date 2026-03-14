@@ -245,6 +245,10 @@ const styles = `
     background: rgba(74, 222, 128, 0.03);
   }
 
+  .ad-table-row-clickable {
+    cursor: pointer;
+  }
+
   .ad-table tbody tr:last-child td { border-bottom: none; }
 
   /* Badges */
@@ -265,6 +269,8 @@ const styles = `
   .ad-badge-pending { background: rgba(251,146,60,0.12); color: #fb923c; border: 1px solid rgba(251,146,60,0.2); }
   .ad-badge-verified { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.2); }
   .ad-badge-flagged { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+  .ad-badge-withdrawn { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+  .ad-badge-rejected { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
 
   /* Action Buttons */
   .ad-btn {
@@ -373,6 +379,85 @@ const styles = `
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .ad-section-gap { margin-bottom: 32px; }
+
+  .ad-group {
+    margin-bottom: 26px;
+  }
+
+  .ad-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .ad-group-note {
+    font-size: 0.85rem;
+    color: #64748b;
+    padding: 10px 0 2px;
+  }
+
+  .ad-detail-card {
+    margin-top: 24px;
+    padding: 20px;
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    border-radius: 14px;
+    background: rgba(74, 222, 128, 0.04);
+  }
+
+  .ad-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .ad-detail-title {
+    font-size: 1rem;
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+
+  .ad-detail-meta {
+    color: #94a3b8;
+    font-size: 0.85rem;
+  }
+
+  .ad-detail-reason {
+    color: #cbd5e1;
+    line-height: 1.6;
+    margin-top: 8px;
+    white-space: pre-wrap;
+  }
+
+  .ad-doc-list {
+    margin-top: 16px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .ad-doc-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+  }
+
+  .ad-doc-type {
+    font-size: 0.78rem;
+    color: #4ade80;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+
+  .ad-doc-name {
+    color: #e2e8f0;
+    font-size: 0.88rem;
+  }
 `;
 
 export default function AdminDashboard() {
@@ -380,7 +465,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [approvedApplications, setApprovedApplications] = useState([]);
-  const [documents, setDocuments] = useState([]);
+  const [selectedApplication, setSelectedApplication] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -398,19 +483,17 @@ export default function AdminDashboard() {
   const loadAdminData = async () => {
     try {
       setLoading(true);
-      const [statsData, usersData, appsData, approvedAppsData, docsData, ledgerData] = await Promise.all([
+      const [statsData, usersData, appsData, approvedAppsData, ledgerData] = await Promise.all([
         adminAPI.getSystemStats(),
         adminAPI.getAllUsers(),
         adminAPI.getPendingApplications(),
         adminAPI.getApprovedApplications(),
-        adminAPI.getPendingDocuments(),
         adminAPI.getTransactionLedger('', 20)
       ]);
       setStats(statsData);
       setUsers(usersData.users);
       setApplications(appsData.applications);
       setApprovedApplications(approvedAppsData.applications);
-      setDocuments(docsData.documents);
       setLedger(ledgerData.transactions);
     } catch (err) {
       console.error('Error loading admin data:', err);
@@ -419,13 +502,18 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleVerifyDocument = async (docId, approved) => {
-    try {
-      await adminAPI.verifyDocument(docId, approved, approved ? '' : 'Document does not meet requirements');
-      setMessage(`✓ Document ${approved ? 'verified' : 'rejected'}`);
-      await loadAdminData();
-    } catch (err) { console.error('Error verifying document:', err); }
-  };
+  useEffect(() => {
+    const combinedApplications = [...applications, ...approvedApplications];
+
+    if (combinedApplications.length === 0) {
+      setSelectedApplication(null);
+      return;
+    }
+
+    if (!selectedApplication || !combinedApplications.some(app => app.id === selectedApplication.id)) {
+      setSelectedApplication(combinedApplications[0]);
+    }
+  }, [applications, approvedApplications, selectedApplication]);
 
   const handleFlagTransaction = async (txnId) => {
     try {
@@ -443,15 +531,17 @@ export default function AdminDashboard() {
     } catch (err) { console.error('Error reviewing application:', err); }
   };
 
-  const handleDisburseFunds = async (appId, amount) => {
-    try {
-      await adminAPI.disburseFunds(appId, amount);
-      setMessage('✓ Funds disbursed successfully');
-      await loadAdminData();
-    } catch (err) {
-      console.error('Error disbursing funds:', err);
-      setMessage(`✗ ${err.msg || 'Error disbursing funds'}`);
-    }
+  const userGroups = [
+    { key: 'ADMIN', title: 'Admins', users: users.filter(user => user.role === 'ADMIN') },
+    { key: 'DONOR', title: 'Donors', users: users.filter(user => user.role === 'DONOR') },
+    { key: 'RECIPIENT', title: 'Recipients', users: users.filter(user => user.role === 'RECIPIENT') },
+  ];
+
+  const getApplicationStatusBadgeClass = (status) => {
+    if (status === 'APPROVED' || status === 'DISBURSED') return 'ad-badge-verified';
+    if (status === 'REJECTED') return 'ad-badge-rejected';
+    if (status === 'WITHDRAWN') return 'ad-badge-withdrawn';
+    return 'ad-badge-pending';
   };
 
   if (loading) {
@@ -509,8 +599,7 @@ export default function AdminDashboard() {
           <div className="ad-tabs">
             {[
               { key: 'overview', label: 'Users Overview' },
-              { key: 'applications', label: 'Applications', count: applications.length },
-              { key: 'documents', label: 'Documents', count: documents.length },
+              { key: 'applications', label: 'Applications', count: applications.length + approvedApplications.length },
               { key: 'ledger', label: 'Ledger' },
             ].map(t => (
               <button
@@ -532,29 +621,38 @@ export default function AdminDashboard() {
               {users.length === 0 ? (
                 <div className="ad-empty"><div className="ad-empty-icon">👤</div>No users found</div>
               ) : (
-                <div className="ad-table-wrap">
-                  <table className="ad-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map(user => (
-                        <tr key={user.id}>
-                          <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{user.name}</td>
-                          <td>{user.email}</td>
-                          <td><span className={`ad-badge ad-badge-${user.role.toLowerCase()}`}>{user.role}</span></td>
-                          <td>{user.status}</td>
-                          <td>
-                            {user.role === 'DONOR' && `Donated: $${user.totalDonated || 0}`}
-                            {user.role === 'RECIPIENT' && `Apps: ${user.applications || 0}`}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                userGroups.map(group => (
+                  <div key={group.key} className="ad-group">
+                    <div className="ad-sub-title">{group.title} ({group.users.length})</div>
+                    {group.users.length === 0 ? (
+                      <div className="ad-group-note">No {group.title.toLowerCase()} found.</div>
+                    ) : (
+                      <div className="ad-table-wrap">
+                        <table className="ad-table">
+                          <thead>
+                            <tr>
+                              <th>Name</th><th>Email</th><th>Status</th><th>Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.users.map(user => (
+                              <tr key={user.id}>
+                                <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{user.name}</td>
+                                <td>{user.email}</td>
+                                <td>{user.status}</td>
+                                <td>
+                                  {user.role === 'DONOR' && `Donated: $${user.totalDonated || 0}`}
+                                  {user.role === 'RECIPIENT' && `Apps: ${user.applications || 0}`}
+                                  {user.role === 'ADMIN' && 'System access'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           )}
@@ -577,14 +675,20 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {applications.map(app => (
-                          <tr key={app.id}>
+                          <tr key={app.id} className="ad-table-row-clickable" onClick={() => setSelectedApplication(app)}>
                             <td style={{ color: '#f1f5f9' }}>{app.recipient.name} <span style={{ color: '#475569' }}>({app.recipient.email})</span></td>
                             <td style={{ color: '#4ade80', fontWeight: 600 }}>${app.amount_requested}</td>
-                            <td>{app.reason.substring(0, 50)}…</td>
+                            <td>{app.reason.length > 50 ? `${app.reason.substring(0, 50)}...` : app.reason}</td>
                             <td>{new Date(app.submittedAt).toLocaleDateString()}</td>
                             <td>
-                              <button className="ad-btn" onClick={() => handleReviewApplication(app.id, true)}>Approve</button>
-                              <button className="ad-btn danger" onClick={() => handleReviewApplication(app.id, false)}>Reject</button>
+                              {app.status === 'WITHDRAWN' ? (
+                                <span className="ad-badge ad-badge-withdrawn">Withdrawn</span>
+                              ) : (
+                                <>
+                                  <button className="ad-btn" onClick={(e) => { e.stopPropagation(); handleReviewApplication(app.id, true); }}>Approve</button>
+                                  <button className="ad-btn danger" onClick={(e) => { e.stopPropagation(); handleReviewApplication(app.id, false); }}>Reject</button>
+                                </>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -595,26 +699,24 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <div className="ad-sub-title blue">Ready for Disbursement ({approvedApplications.length})</div>
+                <div className="ad-sub-title blue">Closed Applications ({approvedApplications.length})</div>
                 {approvedApplications.length === 0 ? (
-                  <div className="ad-empty"><div className="ad-empty-icon">💰</div>No approved applications ready for disbursement</div>
+                  <div className="ad-empty"><div className="ad-empty-icon">📁</div>No closed applications yet</div>
                 ) : (
                   <div className="ad-table-wrap">
                     <table className="ad-table">
                       <thead>
-                        <tr><th>Recipient</th><th>Amount</th><th>Reason</th><th>Approved</th><th>Action</th></tr>
+                        <tr><th>Recipient</th><th>Amount</th><th>Reason</th><th>Closed</th><th>Status</th></tr>
                       </thead>
                       <tbody>
                         {approvedApplications.map(app => (
-                          <tr key={app.id}>
+                          <tr key={app.id} className="ad-table-row-clickable" onClick={() => setSelectedApplication(app)}>
                             <td style={{ color: '#f1f5f9' }}>{app.recipient.name} <span style={{ color: '#475569' }}>({app.recipient.email})</span></td>
                             <td style={{ color: '#4ade80', fontWeight: 600 }}>${app.amount_requested}</td>
-                            <td>{app.reason.substring(0, 50)}…</td>
-                            <td>{new Date(app.approvedAt).toLocaleDateString()}</td>
+                            <td>{app.reason.length > 50 ? `${app.reason.substring(0, 50)}...` : app.reason}</td>
+                            <td>{new Date(app.closedAt).toLocaleDateString()}</td>
                             <td>
-                              <button className="ad-btn blue" onClick={() => handleDisburseFunds(app.id, app.amount_requested)}>
-                                Disburse ${app.amount_requested}
-                              </button>
+                              <span className={`ad-badge ${getApplicationStatusBadgeClass(app.status)}`}>{app.status}</span>
                             </td>
                           </tr>
                         ))}
@@ -623,45 +725,53 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* Documents */}
-          {activeTab === 'documents' && (
-            <div className="ad-section">
-              <div className="ad-section-title">Pending Document Verification</div>
-              <div className="ad-section-divider" />
-              {documents.length === 0 ? (
-                <div className="ad-empty"><div className="ad-empty-icon">✅</div>All documents are verified!</div>
-              ) : (
-                <div className="ad-table-wrap">
-                  <table className="ad-table">
-                    <thead>
-                      <tr><th>User</th><th>Type</th><th>File</th><th>Application</th><th>Uploaded</th><th>Action</th></tr>
-                    </thead>
-                    <tbody>
-                      {documents.map(doc => (
-                        <tr key={doc.id}>
-                          <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{doc.user.name}</td>
-                          <td><span className="ad-badge ad-badge-pending">{doc.type.replace(/_/g, ' ')}</span></td>
-                          <td>
-                            {doc.fileName}
-                            <a href={`http://localhost:5000/uploads/documents/${doc.fileName}`} target="_blank" rel="noopener noreferrer" className="ad-file-link">
+              <div className="ad-detail-card">
+                {!selectedApplication ? (
+                  <div className="ad-group-note">Click any application row above to view complete details.</div>
+                ) : (
+                  <>
+                    <div className="ad-detail-header">
+                      <div className="ad-detail-title">Application Details</div>
+                      <span className={`ad-badge ${getApplicationStatusBadgeClass(selectedApplication.status)}`}>
+                        {selectedApplication.status}
+                      </span>
+                    </div>
+
+                    <div className="ad-detail-meta">
+                      Recipient: {selectedApplication.recipient.name} ({selectedApplication.recipient.email})
+                    </div>
+                    <div className="ad-detail-meta">Amount Requested: ${selectedApplication.amount_requested}</div>
+
+                    <div className="ad-detail-reason">{selectedApplication.reason}</div>
+
+                    <div className="ad-sub-title" style={{ marginTop: '16px', marginBottom: '8px' }}>Uploaded Documents</div>
+                    {selectedApplication.documents?.length ? (
+                      <div className="ad-doc-list">
+                        {selectedApplication.documents.map(doc => (
+                          <div key={doc.id} className="ad-doc-item">
+                            <div>
+                              <div className="ad-doc-type">{doc.type.replace(/_/g, ' ')}</div>
+                              <div className="ad-doc-name">{doc.fileName}</div>
+                              <div className="ad-detail-meta">{doc.status} · {new Date(doc.uploadedAt).toLocaleDateString()}</div>
+                            </div>
+                            <a
+                              href={`http://localhost:5000/uploads/documents/${doc.fileName}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ad-file-link"
+                            >
                               ↓ Download
                             </a>
-                          </td>
-                          <td>{doc.application ? `$${doc.application.amount}` : '—'}</td>
-                          <td>{new Date(doc.uploadedAt).toLocaleDateString()}</td>
-                          <td>
-                            <button className="ad-btn" onClick={() => handleVerifyDocument(doc.id, true)}>Verify</button>
-                            <button className="ad-btn danger" onClick={() => handleVerifyDocument(doc.id, false)}>Reject</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="ad-group-note">No documents uploaded by this recipient yet.</div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 

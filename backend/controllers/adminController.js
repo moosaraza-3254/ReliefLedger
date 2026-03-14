@@ -63,7 +63,7 @@ exports.getSystemStats = async (req, res) => {
 
     const allApplications = await Application.find();
     const approvedApps = allApplications.filter(a => a.status === 'APPROVED');
-    const totalDisbursed = approvedApps.reduce((sum, a) => sum + a.amount_disbursed, 0);
+    const totalDisbursed = allApplications.reduce((sum, a) => sum + (a.amount_disbursed || 0), 0);
 
     const pendingApps = await Application.countDocuments({ status: 'PENDING' });
     const onHoldApps = await Application.countDocuments({ status: 'ON_HOLD' });
@@ -98,19 +98,21 @@ exports.getPendingDocuments = async (req, res) => {
       .sort({ createdAt: -1 });
 
     res.json({
-      documents: documents.map(d => ({
-        id: d._id,
-        user: { id: d.user_id._id, name: d.user_id.name, email: d.user_id.email },
-        type: d.document_type,
-        fileName: d.file_name,
-        size: d.file_size,
-        uploadedAt: d.createdAt,
-        application: d.application_id ? {
-          id: d.application_id._id,
-          amount: d.application_id.amount_requested,
-          reason: d.application_id.reason
-        } : null
-      }))
+      documents: documents
+        .filter(d => d.user_id)
+        .map(d => ({
+          id: d._id,
+          user: { id: d.user_id._id, name: d.user_id.name, email: d.user_id.email },
+          type: d.document_type,
+          fileName: d.file_name,
+          size: d.file_size,
+          uploadedAt: d.createdAt,
+          application: d.application_id ? {
+            id: d.application_id._id,
+            amount: d.application_id.amount_requested,
+            reason: d.application_id.reason
+          } : null
+        }))
     });
   } catch (err) {
     console.error(err.message);
@@ -167,15 +169,32 @@ exports.getPendingApplications = async (req, res) => {
       .populate('recipient_id', 'name email')
       .sort({ createdAt: -1 });
 
+    const applicationsWithDocuments = await Promise.all(
+      applications
+        .filter(a => a.recipient_id)
+        .map(async (a) => {
+        const documents = await Document.find({ user_id: a.recipient_id._id }).sort({ createdAt: -1 });
+
+        return {
+          id: a._id,
+          recipient: { id: a.recipient_id._id, name: a.recipient_id.name, email: a.recipient_id.email },
+          amount_requested: a.amount_requested,
+          reason: a.reason,
+          status: a.status,
+          submittedAt: a.createdAt,
+          documents: documents.map((d) => ({
+            id: d._id,
+            type: d.document_type,
+            fileName: d.file_name,
+            status: d.verification_status,
+            uploadedAt: d.createdAt
+          }))
+        };
+      })
+    );
+
     res.json({
-      applications: applications.map(a => ({
-        id: a._id,
-        recipient: { id: a.recipient_id._id, name: a.recipient_id.name, email: a.recipient_id.email },
-        amount_requested: a.amount_requested,
-        reason: a.reason,
-        status: a.status,
-        submittedAt: a.createdAt
-      }))
+      applications: applicationsWithDocuments
     });
   } catch (err) {
     console.error(err.message);
@@ -183,24 +202,41 @@ exports.getPendingApplications = async (req, res) => {
   }
 };
 
-// @desc    Get all approved applications (ready for disbursement)
+// @desc    Get all closed applications
 // @route   GET /api/admin/applications/approved
 // @access  Private/Admin
 exports.getApprovedApplications = async (req, res) => {
   try {
-    const applications = await Application.find({ status: 'APPROVED' })
+    const applications = await Application.find({ status: { $in: ['APPROVED', 'REJECTED', 'WITHDRAWN'] } })
       .populate('recipient_id', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ updatedAt: -1 });
+
+    const applicationsWithDocuments = await Promise.all(
+      applications
+        .filter(a => a.recipient_id)
+        .map(async (a) => {
+        const documents = await Document.find({ user_id: a.recipient_id._id }).sort({ createdAt: -1 });
+
+        return {
+          id: a._id,
+          recipient: { id: a.recipient_id._id, name: a.recipient_id.name, email: a.recipient_id.email },
+          amount_requested: a.amount_requested,
+          reason: a.reason,
+          status: a.status,
+          closedAt: a.updatedAt,
+          documents: documents.map((d) => ({
+            id: d._id,
+            type: d.document_type,
+            fileName: d.file_name,
+            status: d.verification_status,
+            uploadedAt: d.createdAt
+          }))
+        };
+      })
+    );
 
     res.json({
-      applications: applications.map(a => ({
-        id: a._id,
-        recipient: { id: a.recipient_id._id, name: a.recipient_id.name, email: a.recipient_id.email },
-        amount_requested: a.amount_requested,
-        reason: a.reason,
-        status: a.status,
-        approvedAt: a.updatedAt
-      }))
+      applications: applicationsWithDocuments
     });
   } catch (err) {
     console.error(err.message);

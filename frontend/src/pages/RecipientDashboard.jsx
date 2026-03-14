@@ -1,5 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import recipientAPI from '../api/recipientAPI';
+
+const DOCUMENT_TYPES = [
+  { type: 'ID_PROOF', label: 'ID Proof' },
+  { type: 'ADDRESS_PROOF', label: 'Address Proof' },
+  { type: 'INCOME_PROOF', label: 'Income Proof' },
+];
+
+const REQUIRED_DOCUMENT_TYPES = DOCUMENT_TYPES.map(document => document.type);
+
+const getCurrentDocumentsByType = (documents) => documents.reduce((accumulator, document) => {
+  if (!accumulator[document.type]) {
+    accumulator[document.type] = document;
+  }
+  return accumulator;
+}, {});
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap');
@@ -260,6 +275,81 @@ const styles = `
     background: rgba(74,222,128,0.03);
   }
 
+  .rd-file-input-hidden {
+    display: none;
+  }
+
+  .rd-doc-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed rgba(74,222,128,0.2);
+    border-radius: 10px;
+  }
+
+  .rd-doc-file {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+
+  .rd-doc-meta {
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .rd-doc-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .rd-doc-action {
+    padding: 0.65rem 1rem;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .rd-doc-action:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .rd-doc-action-secondary {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #e2e8f0;
+  }
+
+  .rd-doc-action-secondary:hover:not(:disabled) {
+    border-color: rgba(74,222,128,0.35);
+    color: #4ade80;
+  }
+
+  .rd-doc-action-danger {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.22);
+    color: #fca5a5;
+  }
+
+  .rd-doc-action-danger:hover:not(:disabled) {
+    background: rgba(239,68,68,0.14);
+  }
+
+  .rd-doc-submit {
+    margin-top: 8px;
+  }
+
   .rd-doc-note {
     font-size: 0.82rem;
     color: #475569;
@@ -310,6 +400,29 @@ const styles = `
   .rd-status-APPROVED  { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.2); }
   .rd-status-REJECTED  { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
   .rd-status-DISBURSED { background: rgba(96,165,250,0.12); color: #60a5fa; border: 1px solid rgba(96,165,250,0.2); }
+  .rd-status-WITHDRAWN { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+
+  .rd-app-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .rd-link-btn {
+    border: 1px solid rgba(239,68,68,0.25);
+    background: rgba(239,68,68,0.08);
+    color: #fca5a5;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+  }
+
+  .rd-link-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 
   /* Alerts */
   .rd-success {
@@ -362,28 +475,52 @@ const styles = `
   }
 
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 700px) {
+    .rd-doc-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .rd-doc-actions {
+      width: 100%;
+      justify-content: stretch;
+    }
+
+    .rd-doc-action {
+      flex: 1;
+      text-align: center;
+    }
+  }
 `;
 
 export default function RecipientDashboard() {
   const [wallet, setWallet] = useState({ balance: 0, pending: 0, total: 0 });
   const [applications, setApplications] = useState([]);
+  const [documents, setDocuments] = useState({});
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [submittingApplication, setSubmittingApplication] = useState(false);
+  const [withdrawingApplicationId, setWithdrawingApplicationId] = useState('');
+  const [activeDocumentType, setActiveDocumentType] = useState('');
+  const [removingDocumentId, setRemovingDocumentId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ amount: '', reason: '' });
+  const fileInputRefs = useRef({});
 
   useEffect(() => { loadRecipientData(); }, []);
 
   const loadRecipientData = async () => {
     try {
       setLoading(true);
-      const [walletData, applicationsData] = await Promise.all([
+      const [walletData, applicationsData, documentsData] = await Promise.all([
         recipientAPI.getWallet(),
-        recipientAPI.getApplications()
+        recipientAPI.getApplications(),
+        recipientAPI.getDocuments()
       ]);
       setWallet(walletData);
       setApplications(applicationsData.applications);
+      setDocuments(getCurrentDocumentsByType(documentsData.documents));
     } catch (err) {
       setError(err.msg || 'Failed to load data');
     } finally {
@@ -392,11 +529,20 @@ export default function RecipientDashboard() {
   };
 
   const handleSubmitApplication = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
+    e?.preventDefault();
+    setSubmittingApplication(true);
     setMessage('');
     setError('');
     try {
+      const missingDocumentLabels = DOCUMENT_TYPES
+        .filter(document => !documents[document.type])
+        .map(document => document.label);
+
+      if (missingDocumentLabels.length > 0) {
+        setError(`Please upload all required documents first: ${missingDocumentLabels.join(', ')}`);
+        return;
+      }
+
       if (!formData.amount || parseFloat(formData.amount) <= 0) {
         setError('Please enter a valid amount');
         return;
@@ -412,7 +558,7 @@ export default function RecipientDashboard() {
     } catch (err) {
       setError(err.msg || 'Failed to submit application');
     } finally {
-      setSubmitting(false);
+      setSubmittingApplication(false);
     }
   };
 
@@ -427,7 +573,7 @@ export default function RecipientDashboard() {
       setError('File size too large. Maximum size is 5MB.');
       return;
     }
-    setSubmitting(true);
+    setActiveDocumentType(docType);
     setMessage('');
     setError('');
     try {
@@ -437,9 +583,46 @@ export default function RecipientDashboard() {
     } catch (err) {
       setError(err.msg || 'Failed to upload document');
     } finally {
-      setSubmitting(false);
+      setActiveDocumentType('');
     }
   };
+
+  const handleWithdrawApplication = async (applicationId) => {
+    setWithdrawingApplicationId(applicationId);
+    setMessage('');
+    setError('');
+    try {
+      await recipientAPI.withdrawApplication(applicationId);
+      setMessage('✓ Application withdrawn successfully.');
+      await loadRecipientData();
+    } catch (err) {
+      setError(err.msg || 'Failed to withdraw application');
+    } finally {
+      setWithdrawingApplicationId('');
+    }
+  };
+
+  const handleRemoveDocument = async (documentId) => {
+    setRemovingDocumentId(documentId);
+    setMessage('');
+    setError('');
+    try {
+      await recipientAPI.deleteDocument(documentId);
+      setMessage('✓ Document removed successfully. You can upload a replacement any time.');
+      await loadRecipientData();
+    } catch (err) {
+      setError(err.msg || 'Failed to remove document');
+    } finally {
+      setRemovingDocumentId('');
+    }
+  };
+
+  const openFilePicker = (docType) => {
+    fileInputRefs.current[docType]?.click();
+  };
+
+  const isBusy = submittingApplication || Boolean(activeDocumentType) || Boolean(removingDocumentId) || Boolean(withdrawingApplicationId);
+  const hasAllRequiredDocuments = REQUIRED_DOCUMENT_TYPES.every(type => Boolean(documents[type]));
 
   const getStatusClass = (status) => `rd-status rd-status-${status}`;
 
@@ -489,13 +672,14 @@ export default function RecipientDashboard() {
             </div>
           </div>
 
+          {message && <div className="rd-success">{message}</div>}
+          {error && <div className="rd-error">{error}</div>}
+
           {/* Apply for Aid */}
           <div className="rd-section">
             <div className="rd-section-title">Apply for Relief Aid</div>
             <div className="rd-section-divider" />
-            {message && <div className="rd-success">{message}</div>}
-            {error && <div className="rd-error">{error}</div>}
-            <form className="rd-form" onSubmit={handleSubmitApplication}>
+            <div className="rd-form">
               <div className="rd-field">
                 <label className="rd-label">Amount Requested (USD)</label>
                 <input
@@ -506,7 +690,7 @@ export default function RecipientDashboard() {
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   min="1"
                   step="0.01"
-                  disabled={submitting}
+                  disabled={isBusy}
                 />
               </div>
               <div className="rd-field">
@@ -516,13 +700,10 @@ export default function RecipientDashboard() {
                   placeholder="Explain why you need this assistance (min 10 characters)"
                   value={formData.reason}
                   onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                  disabled={submitting}
+                  disabled={isBusy}
                 />
               </div>
-              <button className="rd-btn" type="submit" disabled={submitting}>
-                {submitting ? 'Submitting…' : 'Submit Application →'}
-              </button>
-            </form>
+            </div>
           </div>
 
           {/* Upload Documents */}
@@ -531,23 +712,75 @@ export default function RecipientDashboard() {
             <div className="rd-section-divider" />
             <p className="rd-doc-note">Upload required documents for verification — PDF, JPG, PNG, DOC, DOCX · Max 5MB each</p>
             <div className="rd-doc-grid">
-              {[
-                { type: 'ID_PROOF',      label: 'ID Proof' },
-                { type: 'ADDRESS_PROOF', label: 'Address Proof' },
-                { type: 'INCOME_PROOF',  label: 'Income Proof' },
-              ].map(({ type, label }) => (
-                <div key={type} className="rd-doc-item">
-                  <label className="rd-doc-label">{label}</label>
-                  <input
-                    type="file"
-                    className="rd-file-input"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    onChange={(e) => handleUploadDocument(type, e.target.files[0])}
-                    disabled={submitting}
-                  />
-                </div>
-              ))}
+              {DOCUMENT_TYPES.map(({ type, label }) => {
+                const document = documents[type];
+                const isReplacing = activeDocumentType === type;
+                const isRemoving = removingDocumentId === document?.id;
+
+                return (
+                  <div key={type} className="rd-doc-item">
+                    <label className="rd-doc-label">{label}</label>
+                    {document ? (
+                      <>
+                        <div className="rd-doc-card">
+                          <div>
+                            <div className="rd-doc-file">{document.fileName}</div>
+                            <div className="rd-doc-meta">
+                              {document.status} · Uploaded {new Date(document.uploadedAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <div className="rd-doc-actions">
+                            <button
+                              type="button"
+                              className="rd-doc-action rd-doc-action-danger"
+                              onClick={() => handleRemoveDocument(document.id)}
+                              disabled={isBusy}
+                            >
+                              {isRemoving ? 'Removing…' : 'Remove'}
+                            </button>
+                            <button
+                              type="button"
+                              className="rd-doc-action rd-doc-action-secondary"
+                              onClick={() => openFilePicker(type)}
+                              disabled={isBusy}
+                            >
+                              {isReplacing ? 'Replacing…' : 'Replace'}
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="file"
+                          className="rd-file-input-hidden"
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                          ref={(element) => {
+                            fileInputRefs.current[type] = element;
+                          }}
+                          onChange={(e) => {
+                            handleUploadDocument(type, e.target.files[0]);
+                            e.target.value = '';
+                          }}
+                          disabled={isBusy}
+                        />
+                      </>
+                    ) : (
+                      <input
+                        type="file"
+                        className="rd-file-input"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        onChange={(e) => handleUploadDocument(type, e.target.files[0])}
+                        disabled={isBusy}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
+            <button className="rd-btn rd-doc-submit" type="button" onClick={handleSubmitApplication} disabled={isBusy || !hasAllRequiredDocuments}>
+              {submittingApplication ? 'Submitting…' : 'Submit Application →'}
+            </button>
+            {!hasAllRequiredDocuments && (
+              <p className="rd-doc-note">Upload ID Proof, Address Proof, and Income Proof to enable application submission.</p>
+            )}
           </div>
 
           {/* My Applications */}
@@ -571,7 +804,19 @@ export default function RecipientDashboard() {
                       <div className="rd-app-disbursed">Disbursed: ${app.amount_disbursed}</div>
                     )}
                   </div>
-                  <span className={getStatusClass(app.status)}>{app.status}</span>
+                  <div className="rd-app-actions">
+                    {app.status === 'PENDING' && (
+                      <button
+                        type="button"
+                        className="rd-link-btn"
+                        onClick={() => handleWithdrawApplication(app.id)}
+                        disabled={isBusy}
+                      >
+                        {withdrawingApplicationId === app.id ? 'Withdrawing…' : 'Withdraw'}
+                      </button>
+                    )}
+                    <span className={getStatusClass(app.status)}>{app.status}</span>
+                  </div>
                 </div>
               ))
             )}
