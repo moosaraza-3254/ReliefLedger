@@ -3,7 +3,13 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const authorizeRole = require('../middleware/authorizeRole');
 const checkFrozen = require('../middleware/checkFrozen');
-const { makeDonation, getDonationHistory, getReceipt, getApprovedApplicationsForFunding } = require('../controllers/donorController');
+const {
+  makeDonation,
+  getDonationHistory,
+  getReceipt,
+  downloadReceipt,
+  getApprovedApplicationsForFunding
+} = require('../controllers/donorController');
 
 // @route   GET api/donor/approved-applications
 // @desc    Get approved applications available for funding
@@ -24,5 +30,6 @@ router.get('/history', auth, authorizeRole('DONOR'), getDonationHistory);
 // @desc    Download receipt
 // @access  Private/Donor
 router.get('/receipt/:receipt_id', auth, authorizeRole('DONOR'), getReceipt);
+router.get('/receipt/download/:receipt_id', auth, authorizeRole('DONOR'), downloadReceipt);
 
 module.exports = router;

@@ -3,6 +3,24 @@ const Transaction = require('../models/Transaction');
 const Application = require('../models/Application');
 const { v4: uuidv4 } = require('uuid');
 
+const formatReceiptContent = (donation) => {
+  const lines = [
+    'ReliefLedger Donation Receipt',
+    '============================',
+    `Receipt ID: ${donation.receipt_id}`,
+    `Date: ${new Date(donation.createdAt).toLocaleString()}`,
+    `Status: ${donation.status}`,
+    `Amount: $${donation.amount.toFixed(2)}`,
+    '',
+    `Donor: ${donation.donor_id?.name || 'N/A'} (${donation.donor_id?.email || 'N/A'})`,
+    `Recipient: ${donation.recipient_id?.name || 'N/A'} (${donation.recipient_id?.email || 'N/A'})`,
+    '',
+    `Message: ${donation.message || 'No message'}`
+  ];
+
+  return `${lines.join('\n')}\n`;
+};
+
 // @desc    Get approved applications available for donor funding
 // @route   GET /api/donor/approved-applications
 // @access  Private/Donor
@@ -182,10 +200,12 @@ exports.getDonationHistory = async (req, res) => {
 // @access  Private/Donor
 exports.getReceipt = async (req, res) => {
   try {
-    const donation = await Donation.findOne({ 
+    const donation = await Donation.findOne({
       receipt_id: req.params.receipt_id,
-      donor_id: req.user.userId 
-    }).populate('recipient_id', 'name email');
+      donor_id: req.user.userId
+    })
+      .populate('recipient_id', 'name email')
+      .populate('donor_id', 'name email');
 
     if (!donation) {
       return res.status(404).json({ msg: 'Receipt not found' });
@@ -196,7 +216,11 @@ exports.getReceipt = async (req, res) => {
       amount: donation.amount,
       date: donation.createdAt,
       message: donation.message,
-      donor_id: donation.donor_id,
+      donor: donation.donor_id ? {
+        id: donation.donor_id._id,
+        name: donation.donor_id.name,
+        email: donation.donor_id.email
+      } : null,
       recipient: donation.recipient_id ? {
         id: donation.recipient_id._id,
         name: donation.recipient_id.name,
@@ -205,6 +229,32 @@ exports.getReceipt = async (req, res) => {
       status: donation.status,
       downloadUrl: `/api/donor/receipt/download/${donation.receipt_id}`
     });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// @desc    Download donation receipt as text file
+// @route   GET /api/donor/receipt/download/:receipt_id
+// @access  Private/Donor
+exports.downloadReceipt = async (req, res) => {
+  try {
+    const donation = await Donation.findOne({
+      receipt_id: req.params.receipt_id,
+      donor_id: req.user.userId
+    })
+      .populate('recipient_id', 'name email')
+      .populate('donor_id', 'name email');
+
+    if (!donation) {
+      return res.status(404).json({ msg: 'Receipt not found' });
+    }
+
+    const content = formatReceiptContent(donation);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${donation.receipt_id}.txt"`);
+    res.send(content);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');

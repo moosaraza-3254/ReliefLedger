@@ -265,6 +265,37 @@ const styles = `
 
   .dd-receipt-btn:hover { background: rgba(74,222,128,0.15); }
 
+  .dd-receipt-panel {
+    margin-top: 18px;
+    padding: 16px;
+    background: rgba(15,23,42,0.55);
+    border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 12px;
+  }
+
+  .dd-receipt-title {
+    font-size: 0.82rem;
+    color: #a7f3d0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .dd-receipt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px 16px;
+    margin-bottom: 14px;
+    font-size: 0.86rem;
+    color: #cbd5e1;
+  }
+
+  .dd-receipt-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
   /* Alerts */
   .dd-success {
     padding: 12px 16px;
@@ -329,6 +360,7 @@ export default function DonorDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [activeReceipt, setActiveReceipt] = useState(null);
 
   useEffect(() => { loadDonationData(); }, []);
 
@@ -385,6 +417,14 @@ export default function DonorDashboard() {
 
       const result = await donorAPI.makeDonation(selectedApplicationId, parseFloat(donationAmount), donationMessage);
       setMessage(`✓ Donation of $${donationAmount} sent to ${result.donation.recipient.name}. Receipt: ${result.donation.receipt_id}`);
+      setActiveReceipt({
+        receipt_id: result.donation.receipt_id,
+        amount: result.donation.amount,
+        date: result.donation.date,
+        status: result.donation.status,
+        recipient: result.donation.recipient,
+        message: donationMessage
+      });
       setDonationAmount('');
       setDonationMessage('');
       await loadDonationData();
@@ -392,6 +432,33 @@ export default function DonorDashboard() {
       setError(err.msg || 'Failed to process donation');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleViewReceipt = async (receiptId) => {
+    try {
+      setError('');
+      const receipt = await donorAPI.getReceipt(receiptId);
+      setActiveReceipt(receipt);
+    } catch (err) {
+      setError(err.msg || 'Failed to fetch receipt');
+    }
+  };
+
+  const handleExportReceipt = async (receiptId) => {
+    try {
+      setError('');
+      const blob = await donorAPI.exportReceipt(receiptId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${receiptId}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.msg || 'Failed to export receipt');
     }
   };
 
@@ -443,6 +510,28 @@ export default function DonorDashboard() {
             <div className="dd-section-divider" />
             {message && <div className="dd-success">{message}</div>}
             {error && <div className="dd-error">{error}</div>}
+            {activeReceipt && (
+              <div className="dd-receipt-panel">
+                <div className="dd-receipt-title">Donation Receipt</div>
+                <div className="dd-receipt-grid">
+                  <div><strong>Receipt ID:</strong> {activeReceipt.receipt_id}</div>
+                  <div><strong>Date:</strong> {new Date(activeReceipt.date).toLocaleString()}</div>
+                  <div><strong>Amount:</strong> ${activeReceipt.amount}</div>
+                  <div><strong>Status:</strong> {activeReceipt.status}</div>
+                  <div><strong>Recipient:</strong> {activeReceipt.recipient?.name || 'N/A'}</div>
+                  <div><strong>Message:</strong> {activeReceipt.message || 'No message'}</div>
+                </div>
+                <div className="dd-receipt-actions">
+                  <button
+                    type="button"
+                    className="dd-receipt-btn"
+                    onClick={() => handleExportReceipt(activeReceipt.receipt_id)}
+                  >
+                    Export Receipt
+                  </button>
+                </div>
+              </div>
+            )}
             {approvedApplications.length === 0 ? (
               <div className="dd-empty">
                 <div className="dd-empty-icon">🕒</div>
@@ -541,9 +630,22 @@ export default function DonorDashboard() {
                         <div className="dd-donation-msg">"{donation.message}"</div>
                       )}
                     </div>
-                    <button className="dd-receipt-btn">
-                      {donation.receipt_id}
-                    </button>
+                    <div className="dd-receipt-actions">
+                      <button
+                        type="button"
+                        className="dd-receipt-btn"
+                        onClick={() => handleViewReceipt(donation.receipt_id)}
+                      >
+                        View {donation.receipt_id}
+                      </button>
+                      <button
+                        type="button"
+                        className="dd-receipt-btn"
+                        onClick={() => handleExportReceipt(donation.receipt_id)}
+                      >
+                        Export
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

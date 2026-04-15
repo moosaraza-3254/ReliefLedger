@@ -39,6 +39,17 @@ const donorAPI = {
 
   downloadReceipt: (receipt_id) => {
     return `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'}/api/donor/receipt/download/${receipt_id}`;
+  },
+
+  exportReceipt: async (receipt_id) => {
+    try {
+      const response = await axios.get(`/api/donor/receipt/download/${receipt_id}`, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
   }
 };
 
