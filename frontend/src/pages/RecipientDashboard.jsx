@@ -204,6 +204,11 @@ const styles = `
 
   .rd-input::placeholder, .rd-textarea::placeholder { color: #334155; }
 
+  .rd-input option {
+    background: #0f172a;
+    color: #f1f5f9;
+  }
+
   .rd-textarea {
     resize: vertical;
     min-height: 100px;
@@ -497,6 +502,7 @@ const styles = `
 export default function RecipientDashboard() {
   const [wallet, setWallet] = useState({ balance: 0, pending: 0, total: 0 });
   const [applications, setApplications] = useState([]);
+  const [incomingDonations, setIncomingDonations] = useState([]);
   const [documents, setDocuments] = useState({});
   const [loading, setLoading] = useState(true);
   const [submittingApplication, setSubmittingApplication] = useState(false);
@@ -505,7 +511,16 @@ export default function RecipientDashboard() {
   const [removingDocumentId, setRemovingDocumentId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [formData, setFormData] = useState({ amount: '', reason: '' });
+  const [formData, setFormData] = useState({
+    amount: '',
+    reason: '',
+    payment_method: 'JAZZCASH',
+    account_title: '',
+    account_number: '',
+    payment_instructions: ''
+  });
+  const [disputeInputs, setDisputeInputs] = useState({});
+  const [donationActionId, setDonationActionId] = useState('');
   const fileInputRefs = useRef({});
 
   useEffect(() => { loadRecipientData(); }, []);
@@ -513,16 +528,18 @@ export default function RecipientDashboard() {
   const loadRecipientData = async () => {
     try {
       setLoading(true);
-      const [walletData, applicationsData, documentsData] = await Promise.all([
+      const [walletData, applicationsData, documentsData, incomingDonationsData] = await Promise.all([
         recipientAPI.getWallet(),
         recipientAPI.getApplications(),
-        recipientAPI.getDocuments()
+        recipientAPI.getDocuments(),
+        recipientAPI.getIncomingDonations()
       ]);
       setWallet(walletData);
       setApplications(applicationsData.applications);
       setDocuments(getCurrentDocumentsByType(documentsData.documents));
+      setIncomingDonations(incomingDonationsData.donations || []);
     } catch (err) {
-      setError(err.msg || 'Failed to load data');
+      setError(err.msg);
     } finally {
       setLoading(false);
     }
@@ -551,9 +568,31 @@ export default function RecipientDashboard() {
         setError('Please provide a detailed reason (minimum 10 characters)');
         return;
       }
-      await recipientAPI.submitApplication(parseFloat(formData.amount), formData.reason);
+      if (!formData.account_title.trim()) {
+        setError('Please enter account title');
+        return;
+      }
+      if (!formData.account_number.trim()) {
+        setError('Please enter account number');
+        return;
+      }
+      await recipientAPI.submitApplication({
+        amount_requested: parseFloat(formData.amount),
+        reason: formData.reason,
+        payment_method: formData.payment_method,
+        account_title: formData.account_title,
+        account_number: formData.account_number,
+        payment_instructions: formData.payment_instructions
+      });
       setMessage('✓ Application submitted successfully! Admin will review it soon.');
-      setFormData({ amount: '', reason: '' });
+      setFormData({
+        amount: '',
+        reason: '',
+        payment_method: 'JAZZCASH',
+        account_title: '',
+        account_number: '',
+        payment_instructions: ''
+      });
       await loadRecipientData();
     } catch (err) {
       setError(err.msg || 'Failed to submit application');
@@ -619,6 +658,43 @@ export default function RecipientDashboard() {
 
   const openFilePicker = (docType) => {
     fileInputRefs.current[docType]?.click();
+  };
+
+  const handleConfirmDonation = async (donationId) => {
+    setDonationActionId(donationId);
+    setMessage('');
+    setError('');
+    try {
+      await recipientAPI.confirmDonation(donationId);
+      setMessage('✓ Donation confirmed and credited.');
+      await loadRecipientData();
+    } catch (err) {
+      setError(err.msg || 'Failed to confirm donation');
+    } finally {
+      setDonationActionId('');
+    }
+  };
+
+  const handleDisputeDonation = async (donationId) => {
+    const reason = disputeInputs[donationId] || '';
+    if (reason.trim().length < 5) {
+      setError('Please add a dispute reason (minimum 5 characters).');
+      return;
+    }
+
+    setDonationActionId(donationId);
+    setMessage('');
+    setError('');
+    try {
+      await recipientAPI.disputeDonation(donationId, reason.trim());
+      setMessage('✓ Donation flagged for admin review.');
+      setDisputeInputs(current => ({ ...current, [donationId]: '' }));
+      await loadRecipientData();
+    } catch (err) {
+      setError(err.msg || 'Failed to dispute donation');
+    } finally {
+      setDonationActionId('');
+    }
   };
 
   const isBusy = submittingApplication || Boolean(activeDocumentType) || Boolean(removingDocumentId) || Boolean(withdrawingApplicationId);
@@ -703,7 +779,105 @@ export default function RecipientDashboard() {
                   disabled={isBusy}
                 />
               </div>
+              <div className="rd-field">
+                <label className="rd-label">Payout Method</label>
+                <select
+                  className="rd-input"
+                  value={formData.payment_method}
+                  onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+                  disabled={isBusy}
+                >
+                  <option value="JAZZCASH">JazzCash</option>
+                  <option value="EASYPAISA">EasyPaisa</option>
+                  <option value="BANK">Bank Transfer</option>
+                </select>
+              </div>
+              <div className="rd-field">
+                <label className="rd-label">Account Title</label>
+                <input
+                  type="text"
+                  className="rd-input"
+                  placeholder="Name on account"
+                  value={formData.account_title}
+                  onChange={(e) => setFormData({ ...formData, account_title: e.target.value })}
+                  disabled={isBusy}
+                />
+              </div>
+              <div className="rd-field">
+                <label className="rd-label">Account Number / ID</label>
+                <input
+                  type="text"
+                  className="rd-input"
+                  placeholder="e.g. 03XXXXXXXXX"
+                  value={formData.account_number}
+                  onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+                  disabled={isBusy}
+                />
+              </div>
+              <div className="rd-field">
+                <label className="rd-label">Payment Instructions (Optional)</label>
+                <input
+                  type="text"
+                  className="rd-input"
+                  placeholder="Optional note for donor"
+                  value={formData.payment_instructions}
+                  onChange={(e) => setFormData({ ...formData, payment_instructions: e.target.value })}
+                  disabled={isBusy}
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Incoming Donations */}
+          <div className="rd-section">
+            <div className="rd-section-title">Incoming Donation Confirmations</div>
+            <div className="rd-section-divider" />
+            {incomingDonations.length === 0 ? (
+              <div className="rd-empty">
+                <div className="rd-empty-icon">📨</div>
+                No pending donations to confirm right now.
+              </div>
+            ) : (
+              incomingDonations.map(donation => (
+                <div key={donation.id} className="rd-app-item" style={{ alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <div className="rd-app-reason">
+                      ${donation.amount} · {donation.payment_method} · Ref {donation.payment_reference}
+                    </div>
+                    <div className="rd-app-meta">
+                      From: {donation.donor?.name || 'Unknown'} · Receipt: {donation.receipt_id}
+                    </div>
+                    {donation.proof_image_path && (
+                      <div className="rd-app-meta" style={{ marginTop: '6px' }}>
+                        Proof: <a href={`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'}${donation.proof_image_path}`} target="_blank" rel="noreferrer">View uploaded proof</a>
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      className="rd-input"
+                      style={{ marginTop: '10px', maxWidth: '420px' }}
+                      placeholder="Reason if proof is fake (required for dispute)"
+                      value={disputeInputs[donation.id] || ''}
+                      onChange={(e) => setDisputeInputs(current => ({ ...current, [donation.id]: e.target.value }))}
+                      disabled={Boolean(donationActionId)}
+                    />
+                  </div>
+                  <div className="rd-app-actions">
+                    {donation.status === 'PENDING_RECIPIENT_CONFIRMATION' && (
+                      <>
+                        <button type="button" className="rd-btn" onClick={() => handleConfirmDonation(donation.id)} disabled={Boolean(donationActionId)}>
+                          {donationActionId === donation.id ? 'Processing…' : 'Confirm Received'}
+                        </button>
+                        <button type="button" className="rd-link-btn" onClick={() => handleDisputeDonation(donation.id)} disabled={Boolean(donationActionId)}>
+                          Report Fake Proof
+                        </button>
+                      </>
+                    )}
+                    <span className={getStatusClass(donation.status)}>{donation.status}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Upload Documents */}

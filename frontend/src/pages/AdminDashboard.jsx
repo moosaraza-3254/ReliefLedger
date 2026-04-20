@@ -523,9 +523,9 @@ export default function AdminDashboard() {
     } catch (err) { console.error('Error flagging transaction:', err); }
   };
 
-  const handleReviewApplication = async (appId, approved, amount = null) => {
+  const handleReviewApplication = async (appId, approved) => {
     try {
-      await adminAPI.reviewApplication(appId, approved, amount || 0, approved ? 'Application approved' : 'Application rejected');
+      await adminAPI.reviewApplication(appId, approved, approved ? 'Application approved' : 'Application rejected');
       setMessage(`✓ Application ${approved ? 'approved' : 'rejected'}`);
       await loadAdminData();
     } catch (err) { console.error('Error reviewing application:', err); }
@@ -599,7 +599,7 @@ export default function AdminDashboard() {
           <div className="ad-tabs">
             {[
               { key: 'overview', label: 'Users Overview' },
-              { key: 'applications', label: 'Applications', count: applications.length + approvedApplications.length },
+              { key: 'applications', label: 'Applications', count: applications.length },
               { key: 'ledger', label: 'Ledger' },
             ].map(t => (
               <button

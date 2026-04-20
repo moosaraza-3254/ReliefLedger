@@ -13,7 +13,9 @@ const {
   reviewApplication,
   disburseFunds,
   getTransactionLedger,
-  flagTransaction
+  flagTransaction,
+  getDonationDisputes,
+  resolveDonationDispute
 } = require('../controllers/adminController');
 
 // @route   GET api/admin/users
@@ -66,5 +68,15 @@ router.get('/ledger', auth, authorizeRole('ADMIN'), getTransactionLedger);
 // @desc    Flag suspicious transaction
 // @access  Private/Admin
 router.put('/transaction/:id/flag', auth, authorizeRole('ADMIN'), flagTransaction);
+
+// @route   GET api/admin/donation-disputes
+// @desc    Get disputed donations
+// @access  Private/Admin
+router.get('/donation-disputes', auth, authorizeRole('ADMIN'), getDonationDisputes);
+
+// @route   PUT api/admin/donation-dispute/:id/resolve
+// @desc    Resolve a disputed donation
+// @access  Private/Admin
+router.put('/donation-dispute/:id/resolve', auth, authorizeRole('ADMIN'), resolveDonationDispute);
 
 module.exports = router;

@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const authorizeRole = require('../middleware/authorizeRole');
 const checkFrozen = require('../middleware/checkFrozen');
+const upload = require('../middleware/upload');
 const {
   makeDonation,
   getDonationHistory,
@@ -19,7 +20,7 @@ router.get('/approved-applications', auth, authorizeRole('DONOR'), getApprovedAp
 // @route   POST api/donor/donate
 // @desc    Make a donation
 // @access  Private/Donor
-router.post('/donate', auth, authorizeRole('DONOR'), checkFrozen, makeDonation);
+router.post('/donate', auth, authorizeRole('DONOR'), checkFrozen, upload.single('proof_image'), makeDonation);
 
 // @route   GET api/donor/history
 // @desc    Get donation history

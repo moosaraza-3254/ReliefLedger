@@ -12,7 +12,10 @@ const {
   getApplications,
   getDocuments,
   getWallet,
-  getVerificationStatus
+  getVerificationStatus,
+  getIncomingDonations,
+  confirmDonationReceived,
+  disputeDonation
 } = require('../controllers/recipientController');
 
 // @route   POST api/recipient/apply
@@ -54,5 +57,20 @@ router.get('/wallet', auth, authorizeRole('RECIPIENT'), getWallet);
 // @desc    Get verification status
 // @access  Private/Recipient
 router.get('/verification-status', auth, authorizeRole('RECIPIENT'), getVerificationStatus);
+
+// @route   GET api/recipient/incoming-donations
+// @desc    Get donations waiting recipient confirmation
+// @access  Private/Recipient
+router.get('/incoming-donations', auth, authorizeRole('RECIPIENT'), getIncomingDonations);
+
+// @route   PUT api/recipient/donation/:donationId/confirm
+// @desc    Confirm donation received
+// @access  Private/Recipient
+router.put('/donation/:donationId/confirm', auth, authorizeRole('RECIPIENT'), checkFrozen, confirmDonationReceived);
+
+// @route   PUT api/recipient/donation/:donationId/dispute
+// @desc    Dispute donation proof
+// @access  Private/Recipient
+router.put('/donation/:donationId/dispute', auth, authorizeRole('RECIPIENT'), checkFrozen, disputeDonation);
 
 module.exports = router;

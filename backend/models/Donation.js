@@ -27,8 +27,49 @@ const donationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'COMPLETED', 'FAILED'],
+    enum: ['PENDING', 'PENDING_RECIPIENT_CONFIRMATION', 'COMPLETED', 'DISPUTED', 'FAILED'],
     default: 'PENDING'
+  },
+  payment_method: {
+    type: String,
+    enum: ['JAZZCASH', 'EASYPAISA', 'BANK'],
+    default: null
+  },
+  recipient_account_title: {
+    type: String,
+    default: ''
+  },
+  recipient_account_number: {
+    type: String,
+    default: ''
+  },
+  payment_reference: {
+    type: String,
+    default: ''
+  },
+  proof_image_path: {
+    type: String,
+    default: ''
+  },
+  proof_submitted_at: {
+    type: Date,
+    default: null
+  },
+  recipient_confirmed_at: {
+    type: Date,
+    default: null
+  },
+  dispute_reason: {
+    type: String,
+    default: ''
+  },
+  dispute_raised_at: {
+    type: Date,
+    default: null
+  },
+  admin_resolution_note: {
+    type: String,
+    default: ''
   },
   receipt_id: {
     type: String,

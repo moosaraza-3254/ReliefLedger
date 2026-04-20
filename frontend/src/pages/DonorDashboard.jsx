@@ -356,6 +356,8 @@ export default function DonorDashboard() {
   const [selectedApplicationId, setSelectedApplicationId] = useState('');
   const [donationAmount, setDonationAmount] = useState('');
   const [donationMessage, setDonationMessage] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentProofFile, setPaymentProofFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -415,7 +417,22 @@ export default function DonorDashboard() {
         return;
       }
 
-      const result = await donorAPI.makeDonation(selectedApplicationId, parseFloat(donationAmount), donationMessage);
+      if (!paymentReference.trim()) {
+        setError('Please enter payment transaction reference');
+        return;
+      }
+      if (!paymentProofFile) {
+        setError('Please upload payment proof screenshot');
+        return;
+      }
+
+      const result = await donorAPI.makeDonation({
+        application_id: selectedApplicationId,
+        amount: parseFloat(donationAmount),
+        message: donationMessage,
+        payment_reference: paymentReference.trim(),
+        proof_image: paymentProofFile
+      });
       setMessage(`✓ Donation of $${donationAmount} sent to ${result.donation.recipient.name}. Receipt: ${result.donation.receipt_id}`);
       setActiveReceipt({
         receipt_id: result.donation.receipt_id,
@@ -423,10 +440,14 @@ export default function DonorDashboard() {
         date: result.donation.date,
         status: result.donation.status,
         recipient: result.donation.recipient,
-        message: donationMessage
+        message: donationMessage,
+        payment_reference: result.donation.payment_reference,
+        payment_method: result.donation.payment_method
       });
       setDonationAmount('');
       setDonationMessage('');
+      setPaymentReference('');
+      setPaymentProofFile(null);
       await loadDonationData();
     } catch (err) {
       setError(err.msg || 'Failed to process donation');
@@ -452,13 +473,13 @@ export default function DonorDashboard() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${receiptId}.txt`;
+      link.download = `${receiptId}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.msg || 'Failed to export receipt');
+      setError(err.msg);
     }
   };
 
@@ -516,9 +537,11 @@ export default function DonorDashboard() {
                 <div className="dd-receipt-grid">
                   <div><strong>Receipt ID:</strong> {activeReceipt.receipt_id}</div>
                   <div><strong>Date:</strong> {new Date(activeReceipt.date).toLocaleString()}</div>
-                  <div><strong>Amount:</strong> ${activeReceipt.amount}</div>
+                  <div><strong>Amount(USD):</strong> ${activeReceipt.amount}</div>
                   <div><strong>Status:</strong> {activeReceipt.status}</div>
                   <div><strong>Recipient:</strong> {activeReceipt.recipient?.name || 'N/A'}</div>
+                  <div><strong>Method:</strong> {activeReceipt.payment_method || 'N/A'}</div>
+                  <div><strong>Payment Ref:</strong> {activeReceipt.payment_reference || 'N/A'}</div>
                   <div><strong>Message:</strong> {activeReceipt.message || 'No message'}</div>
                 </div>
                 <div className="dd-receipt-actions">
@@ -546,6 +569,9 @@ export default function DonorDashboard() {
                         <div className="dd-donation-amount" style={{ fontSize: '1rem' }}>{application.recipient.name}</div>
                         <div className="dd-donation-meta">
                           Needs ${application.amount_requested} · Funded ${application.funded_amount} · Remaining ${application.remaining_amount}
+                        </div>
+                        <div className="dd-donation-msg" style={{ fontStyle: 'normal' }}>
+                          Payment: {application.payment_details?.method} · {application.payment_details?.account_title} · {application.payment_details?.account_number}
                         </div>
                         <div className="dd-donation-msg" style={{ fontStyle: 'normal' }}>{application.reason}</div>
                       </div>
@@ -582,6 +608,31 @@ export default function DonorDashboard() {
                     onChange={(e) => setDonationAmount(e.target.value)}
                     min="1"
                     step="0.01"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+              <div className="dd-field">
+                <label className="dd-label">Payment Reference ID</label>
+                <div className="dd-input-wrap">
+                  <input
+                    type="text"
+                    className="dd-input"
+                    placeholder="Enter JazzCash/EasyPaisa transaction reference"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+              <div className="dd-field">
+                <label className="dd-label">Upload Payment Proof</label>
+                <div className="dd-input-wrap">
+                  <input
+                    type="file"
+                    className="dd-input"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
                     disabled={submitting}
                   />
                 </div>
@@ -625,6 +676,7 @@ export default function DonorDashboard() {
                       <div className="dd-donation-meta">
                         {new Date(donation.date).toLocaleDateString()} · {donation.status}
                         {donation.recipient ? ` · Recipient: ${donation.recipient.name}` : ''}
+                        {donation.payment_reference ? ` · Ref: ${donation.payment_reference}` : ''}
                       </div>
                       {donation.message && (
                         <div className="dd-donation-msg">"{donation.message}"</div>

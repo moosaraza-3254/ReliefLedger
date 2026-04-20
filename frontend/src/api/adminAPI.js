@@ -101,6 +101,27 @@ const adminAPI = {
     } catch (error) {
       throw error.response?.data || error;
     }
+  },
+
+  getDonationDisputes: async () => {
+    try {
+      const response = await axios.get('/api/admin/donation-disputes');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  resolveDonationDispute: async (donationId, action, note = '') => {
+    try {
+      const response = await axios.put(`/api/admin/donation-dispute/${donationId}/resolve`, {
+        action,
+        note
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
   }
 };
 
