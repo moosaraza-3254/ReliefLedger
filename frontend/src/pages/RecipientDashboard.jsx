@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 import recipientAPI from '../api/recipientAPI';
 
 const DOCUMENT_TYPES = [
@@ -429,6 +430,101 @@ const styles = `
     cursor: not-allowed;
   }
 
+  .rd-chat-btn {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(74,222,128,0.25);
+    background: rgba(74,222,128,0.08);
+    color: #86efac;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .rd-chat-panel {
+    border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 12px;
+    background: rgba(15,23,42,0.45);
+    padding: 16px;
+  }
+
+  .rd-chat-title {
+    font-size: 0.92rem;
+    color: #a7f3d0;
+    margin-bottom: 10px;
+  }
+
+  .rd-chat-list {
+    max-height: 260px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(74,222,128,0.55) rgba(255,255,255,0.06);
+  }
+
+  .rd-chat-list::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .rd-chat-list::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+  }
+
+  .rd-chat-list::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(74,222,128,0.7), rgba(22,163,74,0.7));
+    border-radius: 999px;
+    border: 2px solid rgba(8,15,13,0.8);
+  }
+
+  .rd-chat-list::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(134,239,172,0.85), rgba(74,222,128,0.85));
+  }
+
+  .rd-chat-msg {
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    max-width: 85%;
+  }
+
+  .rd-chat-msg.me {
+    align-self: flex-end;
+    background: rgba(74,222,128,0.2);
+    border: 1px solid rgba(74,222,128,0.25);
+    color: #dcfce7;
+  }
+
+  .rd-chat-msg.other {
+    align-self: flex-start;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #e2e8f0;
+  }
+
+  .rd-chat-meta {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+
+  .rd-chat-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  .rd-chat-send {
+    padding: 0 14px;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, #4ade80, #16a34a);
+    color: #052e16;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
   /* Alerts */
   .rd-success {
     padding: 12px 16px;
@@ -521,23 +617,87 @@ export default function RecipientDashboard() {
   });
   const [disputeInputs, setDisputeInputs] = useState({});
   const [donationActionId, setDonationActionId] = useState('');
+  const [recipientChats, setRecipientChats] = useState([]);
+  const [activeRecipientChat, setActiveRecipientChat] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const socketRef = useRef(null);
+  const chatListRef = useRef(null);
   const fileInputRefs = useRef({});
 
   useEffect(() => { loadRecipientData(); }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return undefined;
+    }
+
+    const socket = io(process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000', {
+      auth: { token }
+    });
+
+    socket.on('chat:thread-created', ({ thread }) => {
+      setRecipientChats((current) => {
+        if (current.some((item) => item.id === thread.id)) {
+          return current;
+        }
+        return [thread, ...current];
+      });
+    });
+
+    socket.on('chat:new-message', ({ threadId, message: incomingMessage }) => {
+      setRecipientChats((current) => current
+        .map((thread) => (thread.id === threadId ? { ...thread, last_message_at: incomingMessage.createdAt } : thread))
+        .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
+
+      setChatMessages((current) => {
+        if (!activeRecipientChat || activeRecipientChat.id !== threadId) {
+          return current;
+        }
+        if (current.some((item) => item.id === incomingMessage.id)) {
+          return current;
+        }
+        return [...current, incomingMessage];
+      });
+    });
+
+    socketRef.current = socket;
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [activeRecipientChat]);
+
+  useEffect(() => {
+    if (!activeRecipientChat) {
+      return;
+    }
+
+    const element = chatListRef.current;
+    if (!element) {
+      return;
+    }
+
+    element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
+  }, [chatMessages, activeRecipientChat]);
+
   const loadRecipientData = async () => {
     try {
       setLoading(true);
-      const [walletData, applicationsData, documentsData, incomingDonationsData] = await Promise.all([
+      const [walletData, applicationsData, documentsData, incomingDonationsData, chatsData] = await Promise.all([
         recipientAPI.getWallet(),
         recipientAPI.getApplications(),
         recipientAPI.getDocuments(),
-        recipientAPI.getIncomingDonations()
+        recipientAPI.getIncomingDonations(),
+        recipientAPI.getChats()
       ]);
       setWallet(walletData);
       setApplications(applicationsData.applications);
       setDocuments(getCurrentDocumentsByType(documentsData.documents));
       setIncomingDonations(incomingDonationsData.donations || []);
+      setRecipientChats(chatsData.chats || []);
     } catch (err) {
       setError(err.msg);
     } finally {
@@ -694,6 +854,46 @@ export default function RecipientDashboard() {
       setError(err.msg || 'Failed to dispute donation');
     } finally {
       setDonationActionId('');
+    }
+  };
+
+  const openRecipientChat = async (thread) => {
+    if (activeRecipientChat && activeRecipientChat.id === thread.id) {
+      setActiveRecipientChat(null);
+      setChatMessages([]);
+      return;
+    }
+
+    try {
+      setError('');
+      setChatLoading(true);
+      setActiveRecipientChat(thread);
+      const data = await recipientAPI.getChatMessages(thread.id);
+      setChatMessages(data.messages || []);
+    } catch (err) {
+      setError(err.msg || 'Failed to open chat');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const sendRecipientChatMessage = async (e) => {
+    e.preventDefault();
+    if (!activeRecipientChat || !chatInput.trim()) {
+      return;
+    }
+
+    try {
+      const payload = await recipientAPI.sendChatMessage(activeRecipientChat.id, chatInput.trim());
+      setChatMessages((current) => {
+        if (current.some((item) => item.id === payload.message.id)) {
+          return current;
+        }
+        return [...current, payload.message];
+      });
+      setChatInput('');
+    } catch (err) {
+      setError(err.msg || 'Failed to send message');
     }
   };
 
@@ -877,6 +1077,59 @@ export default function RecipientDashboard() {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+
+          <div className="rd-section">
+            <div className="rd-section-title">Donor Chats</div>
+            <div className="rd-section-divider" />
+            {recipientChats.length === 0 ? (
+              <div className="rd-empty">
+                <div className="rd-empty-icon">💬</div>
+                No donor has started a chat yet.
+              </div>
+            ) : (
+              <>
+                <div className="rd-doc-actions" style={{ justifyContent: 'flex-start', marginBottom: '12px' }}>
+                  {recipientChats.map((thread) => (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      className="rd-chat-btn"
+                      onClick={() => openRecipientChat(thread)}
+                    >
+                      {thread.donor?.name || 'Donor'}
+                    </button>
+                  ))}
+                </div>
+
+                {activeRecipientChat && (
+                  <div className="rd-chat-panel">
+                    <div className="rd-chat-title">Chat with {activeRecipientChat.donor?.name || 'Donor'}</div>
+                    <div className="rd-chat-list" ref={chatListRef}>
+                      {chatMessages.map((msg) => (
+                        <div key={msg.id} className={`rd-chat-msg ${msg.sender?.role === 'RECIPIENT' ? 'me' : 'other'}`}>
+                          <div className="rd-chat-meta">
+                            {msg.sender?.name || msg.sender?.role} · {new Date(msg.createdAt).toLocaleString()}
+                          </div>
+                          <div>{msg.text}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <form className="rd-chat-form" onSubmit={sendRecipientChatMessage}>
+                      <input
+                        type="text"
+                        className="rd-input"
+                        placeholder="Type a reply"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                      />
+                      <button type="submit" className="rd-chat-send">Send</button>
+                    </form>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
