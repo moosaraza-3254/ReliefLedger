@@ -17,6 +17,11 @@ const {
   confirmDonationReceived,
   disputeDonation
 } = require('../controllers/recipientController');
+const {
+  getRecipientChats,
+  getChatMessages,
+  sendChatMessage
+} = require('../controllers/chatController');
 
 // @route   POST api/recipient/apply
 // @desc    Submit relief application
@@ -72,5 +77,20 @@ router.put('/donation/:donationId/confirm', auth, authorizeRole('RECIPIENT'), ch
 // @desc    Dispute donation proof
 // @access  Private/Recipient
 router.put('/donation/:donationId/dispute', auth, authorizeRole('RECIPIENT'), checkFrozen, disputeDonation);
+
+// @route   GET api/recipient/chats
+// @desc    Get donor-initiated chats visible to recipient
+// @access  Private/Recipient
+router.get('/chats', auth, authorizeRole('RECIPIENT'), getRecipientChats);
+
+// @route   GET api/recipient/chats/:threadId/messages
+// @desc    Get messages from recipient chat thread
+// @access  Private/Recipient
+router.get('/chats/:threadId/messages', auth, authorizeRole('RECIPIENT'), getChatMessages);
+
+// @route   POST api/recipient/chats/:threadId/messages
+// @desc    Send message in recipient chat thread
+// @access  Private/Recipient
+router.post('/chats/:threadId/messages', auth, authorizeRole('RECIPIENT'), checkFrozen, sendChatMessage);
 
 module.exports = router;
