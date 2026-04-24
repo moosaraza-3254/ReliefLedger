@@ -1,7 +1,9 @@
 const express = require('express');
+const http = require('http');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
+const { initializeSocket } = require('./socket');
 
 // load env vars
 dotenv.config();
@@ -10,6 +12,7 @@ dotenv.config();
 connectDB();
 
 const app = express();
+const server = http.createServer(app);
 
 // middleware
 app.use(cors());
@@ -43,6 +46,8 @@ if (app._router && app._router.stack) {
 }
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+initializeSocket(server);
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

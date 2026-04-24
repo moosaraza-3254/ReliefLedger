@@ -6,7 +6,18 @@ module.exports = function (req, res, next) {
 
   try {
     const decoded = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
-    req.user = decoded;
+    const normalizedUserId = decoded.userId || decoded.id || decoded.user?.id || decoded.user?._id || null;
+    const normalizedRole = String(decoded.role || decoded.user?.role || '').trim().toUpperCase();
+    req.user = {
+      ...decoded,
+      userId: normalizedUserId,
+      role: normalizedRole || decoded.role
+    };
+
+    if (!req.user.userId) {
+      return res.status(401).json({ msg: 'Token is not valid' });
+    }
+
     next();
   } catch (err) {
     res.status(401).json({ msg: 'Token is not valid' });

@@ -100,6 +100,33 @@ const recipientAPI = {
     } catch (error) {
       throw error.response?.data || error;
     }
+  },
+
+  getChats: async () => {
+    try {
+      const response = await axios.get('/api/recipient/chats');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  getChatMessages: async (threadId) => {
+    try {
+      const response = await axios.get(`/api/recipient/chats/${threadId}/messages`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  sendChatMessage: async (threadId, text) => {
+    try {
+      const response = await axios.post(`/api/recipient/chats/${threadId}/messages`, { text });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
   }
 };
 
