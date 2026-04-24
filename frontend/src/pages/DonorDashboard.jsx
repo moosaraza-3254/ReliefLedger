@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { io } from 'socket.io-client';
 import donorAPI from '../api/donorAPI';
 
 const styles = `
@@ -265,6 +266,37 @@ const styles = `
 
   .dd-receipt-btn:hover { background: rgba(74,222,128,0.15); }
 
+  .dd-receipt-panel {
+    margin-top: 18px;
+    padding: 16px;
+    background: rgba(15,23,42,0.55);
+    border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 12px;
+  }
+
+  .dd-receipt-title {
+    font-size: 0.82rem;
+    color: #a7f3d0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .dd-receipt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px 16px;
+    margin-bottom: 14px;
+    font-size: 0.86rem;
+    color: #cbd5e1;
+  }
+
+  .dd-receipt-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
   /* Alerts */
   .dd-success {
     padding: 12px 16px;
@@ -316,6 +348,118 @@ const styles = `
   }
 
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dd-chat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .dd-chat-btn {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(74,222,128,0.25);
+    background: rgba(74,222,128,0.08);
+    color: #86efac;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .dd-chat-btn:hover {
+    background: rgba(74,222,128,0.16);
+  }
+
+  .dd-chat-panel {
+    border: 1px solid rgba(74,222,128,0.18);
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.45);
+    padding: 16px;
+  }
+
+  .dd-chat-title {
+    font-size: 0.9rem;
+    color: #a7f3d0;
+    margin-bottom: 8px;
+  }
+
+  .dd-chat-list {
+    max-height: 280px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(74,222,128,0.55) rgba(255,255,255,0.06);
+  }
+
+  .dd-chat-list::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .dd-chat-list::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+  }
+
+  .dd-chat-list::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(74,222,128,0.7), rgba(22,163,74,0.7));
+    border-radius: 999px;
+    border: 2px solid rgba(8,15,13,0.8);
+  }
+
+  .dd-chat-list::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(134,239,172,0.85), rgba(74,222,128,0.85));
+  }
+
+  .dd-chat-msg {
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 0.86rem;
+    max-width: 85%;
+  }
+
+  .dd-chat-msg.me {
+    align-self: flex-end;
+    background: rgba(74,222,128,0.2);
+    border: 1px solid rgba(74,222,128,0.25);
+    color: #dcfce7;
+  }
+
+  .dd-chat-msg.other {
+    align-self: flex-start;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #e2e8f0;
+  }
+
+  .dd-chat-meta {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+
+  .dd-chat-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  .dd-chat-form .dd-input {
+    margin: 0;
+  }
+
+  .dd-chat-send {
+    padding: 0 14px;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, #4ade80, #16a34a);
+    color: #052e16;
+    font-weight: 600;
+    cursor: pointer;
+  }
 `;
 
 export default function DonorDashboard() {
@@ -325,24 +469,83 @@ export default function DonorDashboard() {
   const [selectedApplicationId, setSelectedApplicationId] = useState('');
   const [donationAmount, setDonationAmount] = useState('');
   const [donationMessage, setDonationMessage] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentProofFile, setPaymentProofFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [activeReceipt, setActiveReceipt] = useState(null);
+  const [chatThreads, setChatThreads] = useState([]);
+  const [activeChatThread, setActiveChatThread] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [openingApplicationId, setOpeningApplicationId] = useState('');
+  const socketRef = useRef(null);
+  const chatListRef = useRef(null);
 
   useEffect(() => { loadDonationData(); }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return undefined;
+    }
+
+    const socket = io(process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000', {
+      auth: { token }
+    });
+
+    socket.on('chat:new-message', ({ threadId, message: incomingMessage }) => {
+      setChatThreads((current) => current
+        .map((thread) => (thread.id === threadId ? { ...thread, last_message_at: incomingMessage.createdAt } : thread))
+        .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
+
+      setChatMessages((current) => {
+        if (!activeChatThread || activeChatThread.id !== threadId) {
+          return current;
+        }
+        if (current.some((item) => item.id === incomingMessage.id)) {
+          return current;
+        }
+        return [...current, incomingMessage];
+      });
+    });
+
+    socketRef.current = socket;
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [activeChatThread]);
+
+  useEffect(() => {
+    if (!activeChatThread) {
+      return;
+    }
+
+    const element = chatListRef.current;
+    if (!element) {
+      return;
+    }
+
+    element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
+  }, [chatMessages, activeChatThread]);
 
   const loadDonationData = async () => {
     try {
       setLoading(true);
-      const [historyData, approvedData] = await Promise.all([
+      const [historyData, approvedData, chatsData] = await Promise.all([
         donorAPI.getDonationHistory(),
-        donorAPI.getApprovedApplications()
+        donorAPI.getApprovedApplications(),
+        donorAPI.getChats()
       ]);
 
       setDonations({ totalDonated: historyData.totalDonated, donationCount: historyData.donationCount });
       setDonationHistory(historyData.donations);
       setApprovedApplications(approvedData.applications);
+      setChatThreads(chatsData.chats || []);
 
       if (approvedData.applications.length > 0) {
         setSelectedApplicationId(current => current || approvedData.applications[0].id);
@@ -383,15 +586,136 @@ export default function DonorDashboard() {
         return;
       }
 
-      const result = await donorAPI.makeDonation(selectedApplicationId, parseFloat(donationAmount), donationMessage);
+      if (!paymentReference.trim()) {
+        setError('Please enter payment transaction reference');
+        return;
+      }
+      if (!paymentProofFile) {
+        setError('Please upload payment proof screenshot');
+        return;
+      }
+
+      const result = await donorAPI.makeDonation({
+        application_id: selectedApplicationId,
+        amount: parseFloat(donationAmount),
+        message: donationMessage,
+        payment_reference: paymentReference.trim(),
+        proof_image: paymentProofFile
+      });
       setMessage(`✓ Donation of $${donationAmount} sent to ${result.donation.recipient.name}. Receipt: ${result.donation.receipt_id}`);
+      setActiveReceipt({
+        receipt_id: result.donation.receipt_id,
+        amount: result.donation.amount,
+        date: result.donation.date,
+        status: result.donation.status,
+        recipient: result.donation.recipient,
+        message: donationMessage,
+        payment_reference: result.donation.payment_reference,
+        payment_method: result.donation.payment_method
+      });
       setDonationAmount('');
       setDonationMessage('');
+      setPaymentReference('');
+      setPaymentProofFile(null);
       await loadDonationData();
     } catch (err) {
       setError(err.msg || 'Failed to process donation');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleViewReceipt = async (receiptId) => {
+    try {
+      setError('');
+      const receipt = await donorAPI.getReceipt(receiptId);
+      setActiveReceipt(receipt);
+    } catch (err) {
+      setError(err.msg || 'Failed to fetch receipt');
+    }
+  };
+
+  const handleExportReceipt = async (receiptId) => {
+    try {
+      setError('');
+      const blob = await donorAPI.exportReceipt(receiptId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${receiptId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.msg);
+    }
+  };
+
+  const handleOpenChat = async (application) => {
+    try {
+      setError('');
+      setOpeningApplicationId(application.id);
+      setChatLoading(true);
+      const started = await donorAPI.startChat(application.id);
+      const thread = started.thread;
+
+      setChatThreads((current) => {
+        const existing = current.find((item) => item.id === thread.id);
+        if (existing) {
+          return current.map((item) => (item.id === thread.id ? thread : item));
+        }
+        return [thread, ...current];
+      });
+
+      setActiveChatThread(thread);
+      const data = await donorAPI.getChatMessages(thread.id);
+      setChatMessages(data.messages || []);
+    } catch (err) {
+      setError(err.msg || 'Failed to open chat');
+    } finally {
+      setChatLoading(false);
+      setOpeningApplicationId('');
+    }
+  };
+
+  const openExistingChat = async (thread) => {
+    if (activeChatThread && activeChatThread.id === thread.id) {
+      setActiveChatThread(null);
+      setChatMessages([]);
+      return;
+    }
+
+    try {
+      setError('');
+      setChatLoading(true);
+      setActiveChatThread(thread);
+      const data = await donorAPI.getChatMessages(thread.id);
+      setChatMessages(data.messages || []);
+    } catch (err) {
+      setError(err.msg || 'Failed to load chat messages');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleSendChatMessage = async (e) => {
+    e.preventDefault();
+    if (!activeChatThread || !chatInput.trim()) {
+      return;
+    }
+
+    try {
+      const payload = await donorAPI.sendChatMessage(activeChatThread.id, chatInput.trim());
+      setChatMessages((current) => {
+        if (current.some((item) => item.id === payload.message.id)) {
+          return current;
+        }
+        return [...current, payload.message];
+      });
+      setChatInput('');
+    } catch (err) {
+      setError(err.msg || 'Failed to send message');
     }
   };
 
@@ -443,6 +767,30 @@ export default function DonorDashboard() {
             <div className="dd-section-divider" />
             {message && <div className="dd-success">{message}</div>}
             {error && <div className="dd-error">{error}</div>}
+            {activeReceipt && (
+              <div className="dd-receipt-panel">
+                <div className="dd-receipt-title">Donation Receipt</div>
+                <div className="dd-receipt-grid">
+                  <div><strong>Receipt ID:</strong> {activeReceipt.receipt_id}</div>
+                  <div><strong>Date:</strong> {new Date(activeReceipt.date).toLocaleString()}</div>
+                  <div><strong>Amount(USD):</strong> ${activeReceipt.amount}</div>
+                  <div><strong>Status:</strong> {activeReceipt.status}</div>
+                  <div><strong>Recipient:</strong> {activeReceipt.recipient?.name || 'N/A'}</div>
+                  <div><strong>Method:</strong> {activeReceipt.payment_method || 'N/A'}</div>
+                  <div><strong>Payment Ref:</strong> {activeReceipt.payment_reference || 'N/A'}</div>
+                  <div><strong>Message:</strong> {activeReceipt.message || 'No message'}</div>
+                </div>
+                <div className="dd-receipt-actions">
+                  <button
+                    type="button"
+                    className="dd-receipt-btn"
+                    onClick={() => handleExportReceipt(activeReceipt.receipt_id)}
+                  >
+                    Export Receipt
+                  </button>
+                </div>
+              </div>
+            )}
             {approvedApplications.length === 0 ? (
               <div className="dd-empty">
                 <div className="dd-empty-icon">🕒</div>
@@ -453,12 +801,25 @@ export default function DonorDashboard() {
                 <ul className="dd-list" style={{ marginBottom: '16px' }}>
                   {approvedApplications.map(application => (
                     <li key={application.id} className="dd-list-item" style={{ alignItems: 'center' }}>
-                      <div>
-                        <div className="dd-donation-amount" style={{ fontSize: '1rem' }}>{application.recipient.name}</div>
-                        <div className="dd-donation-meta">
-                          Needs ${application.amount_requested} · Funded ${application.funded_amount} · Remaining ${application.remaining_amount}
+                      <div className="dd-chat-row">
+                        <div>
+                          <div className="dd-donation-amount" style={{ fontSize: '1rem' }}>{application.recipient.name}</div>
+                          <div className="dd-donation-meta">
+                            Needs ${application.amount_requested} · Funded ${application.funded_amount} · Remaining ${application.remaining_amount}
+                          </div>
+                          <div className="dd-donation-msg" style={{ fontStyle: 'normal' }}>
+                            Payment: {application.payment_details?.method} · {application.payment_details?.account_title} · {application.payment_details?.account_number}
+                          </div>
+                          <div className="dd-donation-msg" style={{ fontStyle: 'normal' }}>{application.reason}</div>
                         </div>
-                        <div className="dd-donation-msg" style={{ fontStyle: 'normal' }}>{application.reason}</div>
+                        <button
+                          type="button"
+                          className="dd-chat-btn"
+                          onClick={() => handleOpenChat(application)}
+                          disabled={openingApplicationId === application.id}
+                        >
+                          {openingApplicationId === application.id ? 'Opening…' : 'Chat'}
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -498,6 +859,31 @@ export default function DonorDashboard() {
                 </div>
               </div>
               <div className="dd-field">
+                <label className="dd-label">Payment Reference ID</label>
+                <div className="dd-input-wrap">
+                  <input
+                    type="text"
+                    className="dd-input"
+                    placeholder="Enter JazzCash/EasyPaisa transaction reference"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+              <div className="dd-field">
+                <label className="dd-label">Upload Payment Proof</label>
+                <div className="dd-input-wrap">
+                  <input
+                    type="file"
+                    className="dd-input"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+              <div className="dd-field">
                 <label className="dd-label">Message (Optional)</label>
                 <div className="dd-input-wrap">
                   <input
@@ -514,6 +900,58 @@ export default function DonorDashboard() {
                 {submitting ? 'Processing…' : 'Send Direct Donation →'}
               </button>
             </form>
+              </>
+            )}
+          </div>
+
+          <div className="dd-section">
+            <div className="dd-section-title">Recipient Chats</div>
+            <div className="dd-section-divider" />
+            {chatThreads.length === 0 ? (
+              <div className="dd-empty">Use the Chat button above to start a conversation with an approved recipient.</div>
+            ) : (
+              <>
+                <div className="dd-receipt-actions" style={{ marginBottom: '12px' }}>
+                  {chatThreads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      className="dd-receipt-btn"
+                      onClick={() => openExistingChat(thread)}
+                    >
+                      {thread.recipient?.name || 'Recipient'}
+                    </button>
+                  ))}
+                </div>
+
+                {activeChatThread && (
+                  <div className="dd-chat-panel">
+                    <div className="dd-chat-title">Chat with {activeChatThread.recipient?.name || 'Recipient'}</div>
+                    <div className="dd-chat-list" ref={chatListRef}>
+                      {chatMessages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`dd-chat-msg ${msg.sender?.role === 'DONOR' ? 'me' : 'other'}`}
+                        >
+                          <div className="dd-chat-meta">
+                            {msg.sender?.name || msg.sender?.role} · {new Date(msg.createdAt).toLocaleString()}
+                          </div>
+                          <div>{msg.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <form className="dd-chat-form" onSubmit={handleSendChatMessage}>
+                      <input
+                        className="dd-input"
+                        type="text"
+                        value={chatInput}
+                        placeholder="Type a message"
+                        onChange={(e) => setChatInput(e.target.value)}
+                      />
+                      <button type="submit" className="dd-chat-send">Send</button>
+                    </form>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -536,14 +974,28 @@ export default function DonorDashboard() {
                       <div className="dd-donation-meta">
                         {new Date(donation.date).toLocaleDateString()} · {donation.status}
                         {donation.recipient ? ` · Recipient: ${donation.recipient.name}` : ''}
+                        {donation.payment_reference ? ` · Ref: ${donation.payment_reference}` : ''}
                       </div>
                       {donation.message && (
                         <div className="dd-donation-msg">"{donation.message}"</div>
                       )}
                     </div>
-                    <button className="dd-receipt-btn">
-                      {donation.receipt_id}
-                    </button>
+                    <div className="dd-receipt-actions">
+                      <button
+                        type="button"
+                        className="dd-receipt-btn"
+                        onClick={() => handleViewReceipt(donation.receipt_id)}
+                      >
+                        View {donation.receipt_id}
+                      </button>
+                      <button
+                        type="button"
+                        className="dd-receipt-btn"
+                        onClick={() => handleExportReceipt(donation.receipt_id)}
+                      >
+                        Export
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

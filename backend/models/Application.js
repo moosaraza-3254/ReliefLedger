@@ -15,6 +15,23 @@ const applicationSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  payment_method: {
+    type: String,
+    enum: ['JAZZCASH', 'EASYPAISA', 'BANK'],
+    required: true
+  },
+  account_title: {
+    type: String,
+    required: true
+  },
+  account_number: {
+    type: String,
+    required: true
+  },
+  payment_instructions: {
+    type: String,
+    default: ''
+  },
   status: {
     type: String,
     enum: ['PENDING', 'APPROVED', 'REJECTED', 'DISBURSED', 'ON_HOLD', 'REVERSED', 'WITHDRAWN'],

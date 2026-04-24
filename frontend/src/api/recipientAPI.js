@@ -1,12 +1,9 @@
 import axios from '../api';
 
 const recipientAPI = {
-  submitApplication: async (amount_requested, reason) => {
+  submitApplication: async (payload) => {
     try {
-      const response = await axios.post('/api/recipient/apply', {
-        amount_requested,
-        reason
-      });
+      const response = await axios.post('/api/recipient/apply', payload);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
@@ -72,6 +69,60 @@ const recipientAPI = {
   getWallet: async () => {
     try {
       const response = await axios.get('/api/recipient/wallet');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  getIncomingDonations: async () => {
+    try {
+      const response = await axios.get('/api/recipient/incoming-donations');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  confirmDonation: async (donationId) => {
+    try {
+      const response = await axios.put(`/api/recipient/donation/${donationId}/confirm`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  disputeDonation: async (donationId, reason) => {
+    try {
+      const response = await axios.put(`/api/recipient/donation/${donationId}/dispute`, { reason });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  getChats: async () => {
+    try {
+      const response = await axios.get('/api/recipient/chats');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  getChatMessages: async (threadId) => {
+    try {
+      const response = await axios.get(`/api/recipient/chats/${threadId}/messages`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
+  sendChatMessage: async (threadId, text) => {
+    try {
+      const response = await axios.post(`/api/recipient/chats/${threadId}/messages`, { text });
       return response.data;
     } catch (error) {
       throw error.response?.data || error;

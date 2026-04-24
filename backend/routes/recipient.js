@@ -12,8 +12,16 @@ const {
   getApplications,
   getDocuments,
   getWallet,
-  getVerificationStatus
+  getVerificationStatus,
+  getIncomingDonations,
+  confirmDonationReceived,
+  disputeDonation
 } = require('../controllers/recipientController');
+const {
+  getRecipientChats,
+  getChatMessages,
+  sendChatMessage
+} = require('../controllers/chatController');
 
 // @route   POST api/recipient/apply
 // @desc    Submit relief application
@@ -54,5 +62,35 @@ router.get('/wallet', auth, authorizeRole('RECIPIENT'), getWallet);
 // @desc    Get verification status
 // @access  Private/Recipient
 router.get('/verification-status', auth, authorizeRole('RECIPIENT'), getVerificationStatus);
+
+// @route   GET api/recipient/incoming-donations
+// @desc    Get donations waiting recipient confirmation
+// @access  Private/Recipient
+router.get('/incoming-donations', auth, authorizeRole('RECIPIENT'), getIncomingDonations);
+
+// @route   PUT api/recipient/donation/:donationId/confirm
+// @desc    Confirm donation received
+// @access  Private/Recipient
+router.put('/donation/:donationId/confirm', auth, authorizeRole('RECIPIENT'), checkFrozen, confirmDonationReceived);
+
+// @route   PUT api/recipient/donation/:donationId/dispute
+// @desc    Dispute donation proof
+// @access  Private/Recipient
+router.put('/donation/:donationId/dispute', auth, authorizeRole('RECIPIENT'), checkFrozen, disputeDonation);
+
+// @route   GET api/recipient/chats
+// @desc    Get donor-initiated chats visible to recipient
+// @access  Private/Recipient
+router.get('/chats', auth, authorizeRole('RECIPIENT'), getRecipientChats);
+
+// @route   GET api/recipient/chats/:threadId/messages
+// @desc    Get messages from recipient chat thread
+// @access  Private/Recipient
+router.get('/chats/:threadId/messages', auth, authorizeRole('RECIPIENT'), getChatMessages);
+
+// @route   POST api/recipient/chats/:threadId/messages
+// @desc    Send message in recipient chat thread
+// @access  Private/Recipient
+router.post('/chats/:threadId/messages', auth, authorizeRole('RECIPIENT'), checkFrozen, sendChatMessage);
 
 module.exports = router;

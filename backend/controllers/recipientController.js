@@ -3,6 +3,7 @@ const path = require('path');
 const Application = require('../models/Application');
 const Document = require('../models/Document');
 const Transaction = require('../models/Transaction');
+const Donation = require('../models/Donation');
 const { v4: uuidv4 } = require('uuid');
 
 const buildDocumentFilter = (userId, documentType, applicationId) => ({
@@ -34,7 +35,7 @@ const removeStoredFile = async (filePath) => {
 // @access  Private/Recipient
 exports.submitApplication = async (req, res) => {
   try {
-    const { amount_requested, reason } = req.body;
+    const { amount_requested, reason, payment_method, account_title, account_number, payment_instructions } = req.body;
     const requiredDocumentTypes = ['ID_PROOF', 'ADDRESS_PROOF', 'INCOME_PROOF'];
 
     const uploadedDocuments = await Document.find({
@@ -59,11 +60,24 @@ exports.submitApplication = async (req, res) => {
     if (!reason || reason.trim().length < 10) {
       return res.status(400).json({ msg: 'Please provide a detailed reason (min 10 characters)' });
     }
+    if (!payment_method || !['JAZZCASH', 'EASYPAISA', 'BANK'].includes(payment_method)) {
+      return res.status(400).json({ msg: 'Please provide a valid payment method' });
+    }
+    if (!account_title || !account_title.trim()) {
+      return res.status(400).json({ msg: 'Account title is required' });
+    }
+    if (!account_number || !account_number.trim()) {
+      return res.status(400).json({ msg: 'Account number is required' });
+    }
 
     const application = new Application({
       recipient_id: req.user.userId,
       amount_requested,
       reason,
+      payment_method,
+      account_title: account_title.trim(),
+      account_number: account_number.trim(),
+      payment_instructions: payment_instructions || '',
       status: 'PENDING'
     });
 
@@ -75,6 +89,9 @@ exports.submitApplication = async (req, res) => {
         id: application._id,
         amount_requested,
         reason,
+        payment_method: application.payment_method,
+        account_title: application.account_title,
+        account_number: application.account_number,
         status: application.status,
         createdAt: application.createdAt
       }
@@ -209,6 +226,10 @@ exports.getApplications = async (req, res) => {
           amount_requested: app.amount_requested,
           amount_disbursed: app.amount_disbursed,
           reason: app.reason,
+          payment_method: app.payment_method,
+          account_title: app.account_title,
+          account_number: app.account_number,
+          payment_instructions: app.payment_instructions,
           status: app.status,
           createdAt: app.createdAt,
           updatedAt: app.updatedAt,
@@ -224,6 +245,148 @@ exports.getApplications = async (req, res) => {
     res.json({
       applications: applicationsWithDetails
     });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// @desc    Get donations waiting recipient confirmation
+// @route   GET /api/recipient/incoming-donations
+// @access  Private/Recipient
+exports.getIncomingDonations = async (req, res) => {
+  try {
+    const donations = await Donation.find({
+      recipient_id: req.user.userId,
+      status: { $in: ['PENDING_RECIPIENT_CONFIRMATION', 'DISPUTED'] }
+    })
+      .populate('donor_id', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      donations: donations.map(d => ({
+        id: d._id,
+        receipt_id: d.receipt_id,
+        amount: d.amount,
+        message: d.message,
+        status: d.status,
+        payment_method: d.payment_method,
+        recipient_account_title: d.recipient_account_title,
+        recipient_account_number: d.recipient_account_number,
+        payment_reference: d.payment_reference,
+        proof_image_path: d.proof_image_path ? `/${String(d.proof_image_path).replace(/\\/g, '/')}` : '',
+        proof_submitted_at: d.proof_submitted_at,
+        dispute_reason: d.dispute_reason,
+        donor: d.donor_id ? {
+          id: d.donor_id._id,
+          name: d.donor_id.name,
+          email: d.donor_id.email
+        } : null
+      }))
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// @desc    Confirm donation received
+// @route   PUT /api/recipient/donation/:donationId/confirm
+// @access  Private/Recipient
+exports.confirmDonationReceived = async (req, res) => {
+  try {
+    const donation = await Donation.findOne({
+      _id: req.params.donationId,
+      recipient_id: req.user.userId
+    });
+
+    if (!donation) {
+      return res.status(404).json({ msg: 'Donation not found' });
+    }
+    if (donation.status !== 'PENDING_RECIPIENT_CONFIRMATION') {
+      return res.status(400).json({ msg: 'Donation is not waiting for confirmation' });
+    }
+
+    donation.status = 'COMPLETED';
+    donation.recipient_confirmed_at = new Date();
+    donation.completedAt = new Date();
+    await donation.save();
+
+    const existingTransaction = await Transaction.findOne({ related_donation: donation._id });
+    if (existingTransaction) {
+      existingTransaction.status = 'COMPLETED';
+      await existingTransaction.save();
+    } else {
+      const transaction = new Transaction({
+        transaction_id: `TXN-${uuidv4().substring(0, 8).toUpperCase()}`,
+        from_user: donation.donor_id,
+        to_user: donation.recipient_id,
+        type: 'DONATION',
+        amount: donation.amount,
+        status: 'COMPLETED',
+        reason: `Donation confirmed by recipient for application ${donation.application_id}`,
+        related_donation: donation._id,
+        related_application: donation.application_id
+      });
+      await transaction.save();
+    }
+
+    const application = await Application.findById(donation.application_id);
+    if (application) {
+      application.amount_disbursed = (application.amount_disbursed || 0) + donation.amount;
+      application.updatedAt = new Date();
+      const remaining = (application.amount_requested || 0) - (application.amount_disbursed || 0);
+      if (remaining <= 0.0001) {
+        application.status = 'DISBURSED';
+        application.disbursed_at = new Date();
+      }
+      await application.save();
+    }
+
+    res.json({ msg: 'Donation confirmed successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// @desc    Dispute donation proof
+// @route   PUT /api/recipient/donation/:donationId/dispute
+// @access  Private/Recipient
+exports.disputeDonation = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || reason.trim().length < 5) {
+      return res.status(400).json({ msg: 'Please provide dispute reason (min 5 characters)' });
+    }
+
+    const donation = await Donation.findOne({
+      _id: req.params.donationId,
+      recipient_id: req.user.userId
+    });
+    if (!donation) {
+      return res.status(404).json({ msg: 'Donation not found' });
+    }
+    if (donation.status !== 'PENDING_RECIPIENT_CONFIRMATION') {
+      return res.status(400).json({ msg: 'Only pending confirmations can be disputed' });
+    }
+
+    donation.status = 'DISPUTED';
+    donation.dispute_reason = reason.trim();
+    donation.dispute_raised_at = new Date();
+    await donation.save();
+
+    const relatedTransaction = await Transaction.findOne({ related_donation: donation._id });
+    if (relatedTransaction) {
+      relatedTransaction.status = 'FLAGGED';
+      relatedTransaction.flagged = true;
+      relatedTransaction.flaggedAt = new Date();
+      relatedTransaction.flaggedReason = reason.trim();
+      relatedTransaction.flag_reason = reason.trim();
+      await relatedTransaction.save();
+    }
+
+    res.json({ msg: 'Donation flagged for admin review' });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');

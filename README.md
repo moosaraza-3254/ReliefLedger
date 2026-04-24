@@ -1,6 +1,6 @@
 # 🌟 Relief Ledger
 
-Relief Ledger is a transparent relief fund management platform designed to ensure accountability, security, and visibility in humanitarian aid distribution. It allows donors to contribute, admins to verify requests, and recipients to receive aid, while maintaining a publicly auditable ledger of all transactions.
+Relief Ledger is a transparent relief fund management platform designed to ensure accountability, security, and visibility in humanitarian aid distribution. It allows donors to contribute, admins to verify requests, and recipients to receive aid, while maintaining a publicly auditable ledger of all transactions. The need for such an app is driven by increased concerns of people , especially donors, about "fake" poor people running their "bhikaari" buisnesses and taking the funds away from the "real" people in need. We ourselves have witnessed such "peeps" operating in Pakistan , and thus aim to solve this critical problem via an online accessible verifiable platform for the "authentic" people.
 
 ---
 

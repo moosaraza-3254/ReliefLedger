@@ -651,3 +651,106 @@ exports.flagTransaction = async (req, res) => {
     });
   }
 };
+
+// @desc    Get disputed donations
+// @route   GET /api/admin/donation-disputes
+// @access  Private/Admin
+exports.getDonationDisputes = async (req, res) => {
+  try {
+    const donations = await Donation.find({ status: 'DISPUTED' })
+      .populate('donor_id', 'name email isFrozen')
+      .populate('recipient_id', 'name email')
+      .populate('application_id', 'amount_requested reason')
+      .sort({ dispute_raised_at: -1 });
+
+    res.json({
+      disputes: donations.map(donation => ({
+        id: donation._id,
+        receipt_id: donation.receipt_id,
+        amount: donation.amount,
+        payment_reference: donation.payment_reference,
+        proof_image_path: donation.proof_image_path ? `/${String(donation.proof_image_path).replace(/\\/g, '/')}` : '',
+        dispute_reason: donation.dispute_reason,
+        dispute_raised_at: donation.dispute_raised_at,
+        donor: donation.donor_id ? {
+          id: donation.donor_id._id,
+          name: donation.donor_id.name,
+          email: donation.donor_id.email,
+          isFrozen: donation.donor_id.isFrozen
+        } : null,
+        recipient: donation.recipient_id ? {
+          id: donation.recipient_id._id,
+          name: donation.recipient_id.name,
+          email: donation.recipient_id.email
+        } : null,
+        application: donation.application_id ? {
+          id: donation.application_id._id,
+          amount_requested: donation.application_id.amount_requested,
+          reason: donation.application_id.reason
+        } : null
+      }))
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// @desc    Resolve a donation dispute
+// @route   PUT /api/admin/donation-dispute/:id/resolve
+// @access  Private/Admin
+exports.resolveDonationDispute = async (req, res) => {
+  try {
+    const { action, note } = req.body;
+    if (!['VALID_PROOF', 'FAKE_PROOF'].includes(action)) {
+      return res.status(400).json({ msg: 'Invalid resolution action' });
+    }
+
+    const donation = await Donation.findById(req.params.id);
+    if (!donation || donation.status !== 'DISPUTED') {
+      return res.status(404).json({ msg: 'Disputed donation not found' });
+    }
+
+    if (action === 'VALID_PROOF') {
+      donation.status = 'COMPLETED';
+      donation.recipient_confirmed_at = new Date();
+      donation.completedAt = new Date();
+    } else {
+      donation.status = 'FAILED';
+      if (donation.donor_id) {
+        await User.findByIdAndUpdate(donation.donor_id, {
+          isFrozen: true,
+          frozenAt: new Date()
+        });
+      }
+    }
+
+    donation.admin_resolution_note = note || '';
+    await donation.save();
+
+    const transaction = await Transaction.findOne({ related_donation: donation._id });
+    if (transaction) {
+      transaction.status = action === 'VALID_PROOF' ? 'COMPLETED' : 'FAILED';
+      await transaction.save();
+    }
+
+    if (action === 'VALID_PROOF') {
+      const application = await Application.findById(donation.application_id);
+      if (application) {
+        application.amount_disbursed = (application.amount_disbursed || 0) + donation.amount;
+        application.updatedAt = new Date();
+        const remaining = (application.amount_requested || 0) - (application.amount_disbursed || 0);
+        if (remaining <= 0.0001) {
+          application.status = 'DISBURSED';
+          application.disbursed_at = new Date();
+        }
+        await application.save();
+      }
+    }
+
+    res.json({ msg: 'Dispute resolved successfully', donationId: donation._id, status: donation.status });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
