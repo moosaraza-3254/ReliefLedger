@@ -3,15 +3,25 @@ const ChatThread = require('../models/ChatThread');
 const ChatMessage = require('../models/ChatMessage');
 const { getIO } = require('../socket');
 
+const toIdString = (value) => {
+  if (value == null) {
+    return '';
+  }
+  if (typeof value === 'object' && value._id != null) {
+    return String(value._id);
+  }
+  return String(value);
+};
+
 const serializeThread = (thread) => ({
-  id: thread._id,
+  id: String(thread._id),
   donor: thread.donor_id ? {
-    id: thread.donor_id._id,
+    id: String(thread.donor_id._id),
     name: thread.donor_id.name,
     email: thread.donor_id.email
   } : null,
   recipient: thread.recipient_id ? {
-    id: thread.recipient_id._id,
+    id: String(thread.recipient_id._id),
     name: thread.recipient_id.name,
     email: thread.recipient_id.email
   } : null,
@@ -26,11 +36,11 @@ const getSenderRoleFromThread = (message, thread) => {
     return message?.sender_role || 'RECIPIENT';
   }
 
-  const senderId = String(message.sender_id._id || message.sender_id);
-  if (String(thread.donor_id?._id || thread.donor_id) === senderId) {
+  const senderId = toIdString(message.sender_id._id || message.sender_id);
+  if (toIdString(thread.donor_id) === senderId) {
     return 'DONOR';
   }
-  if (String(thread.recipient_id?._id || thread.recipient_id) === senderId) {
+  if (toIdString(thread.recipient_id) === senderId) {
     return 'RECIPIENT';
   }
 
@@ -38,12 +48,16 @@ const getSenderRoleFromThread = (message, thread) => {
 };
 
 const serializeMessage = (message, thread = null) => {
-  const resolvedRole = getSenderRoleFromThread(message, thread);
+  const stored = message.sender_role;
+  const resolvedRole =
+    stored === 'DONOR' || stored === 'RECIPIENT'
+      ? stored
+      : getSenderRoleFromThread(message, thread);
   return {
-    id: message._id,
+    id: String(message._id),
     thread_id: message.thread_id,
     sender: message.sender_id ? {
-      id: message.sender_id._id,
+      id: String(message.sender_id._id),
       name: message.sender_id.name,
       email: message.sender_id.email,
       role: resolvedRole
@@ -67,8 +81,9 @@ const getAuthorizedThread = async (threadId, userId, role) => {
     return null;
   }
 
-  const isDonor = String(thread.donor_id?._id) === String(userId);
-  const isRecipient = String(thread.recipient_id?._id) === String(userId);
+  const uid = toIdString(userId);
+  const isDonor = toIdString(thread.donor_id) === uid;
+  const isRecipient = toIdString(thread.recipient_id) === uid;
 
   if (!isDonor && !isRecipient) {
     return null;
@@ -134,7 +149,7 @@ exports.startDonorChat = async (req, res) => {
     if (isNewThread) {
       const io = getIO();
       if (io) {
-        io.to(`user:${thread.recipient_id._id}`).emit('chat:thread-created', {
+        io.to(`user:${toIdString(thread.recipient_id)}`).emit('chat:thread-created', {
           thread: serializeThread(thread)
         });
       }
@@ -229,7 +244,7 @@ exports.sendChatMessage = async (req, res) => {
       return res.status(404).json({ msg: 'Chat not found' });
     }
 
-    const senderRole = String(thread.donor_id?._id || thread.donor_id) === String(req.user.userId)
+    const senderRole = toIdString(thread.donor_id) === toIdString(req.user.userId)
       ? 'DONOR'
       : 'RECIPIENT';
 
@@ -251,11 +266,13 @@ exports.sendChatMessage = async (req, res) => {
 
     const io = getIO();
     if (io) {
-      io.to(`user:${thread.donor_id._id}`).emit('chat:new-message', {
+      const donorRoom = toIdString(thread.donor_id);
+      const recipientRoom = toIdString(thread.recipient_id);
+      io.to(`user:${donorRoom}`).emit('chat:new-message', {
         threadId: String(thread._id),
         message: serializedMessage
       });
-      io.to(`user:${thread.recipient_id._id}`).emit('chat:new-message', {
+      io.to(`user:${recipientRoom}`).emit('chat:new-message', {
         threadId: String(thread._id),
         message: serializedMessage
       });

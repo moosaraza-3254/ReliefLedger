@@ -7,7 +7,7 @@ const User = require('../models/User');
  */
 module.exports = async function checkFrozen(req, res, next) {
     try {
-        const user = await User.findById(req.user.userId).select('isFrozen');
+        const user = await User.findById(String(req.user.userId)).select('isFrozen');
         if (!user) {
             return res.status(404).json({ msg: 'User not found' });
         }

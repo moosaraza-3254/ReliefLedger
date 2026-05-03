@@ -15,7 +15,7 @@ module.exports = (...allowedRoles) => {
     }
 
     try {
-      const user = await User.findById(req.user.userId).select('role');
+      const user = await User.findById(String(req.user.userId)).select('role');
       if (!user) {
         return res.status(401).json({ msg: 'User not found' });
       }

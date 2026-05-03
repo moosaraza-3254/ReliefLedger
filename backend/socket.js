@@ -34,9 +34,9 @@ const initializeSocket = (server) => {
   });
 
   ioInstance.on('connection', (socket) => {
-    const userId = socket.user?.userId;
-    if (userId) {
-      socket.join(`user:${userId}`);
+    const userId = socket.user?.userId ?? socket.user?.id;
+    if (userId != null && String(userId).trim() !== '') {
+      socket.join(`user:${String(userId)}`);
     }
   });
 

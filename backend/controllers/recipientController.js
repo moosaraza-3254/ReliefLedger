@@ -12,6 +12,21 @@ const buildDocumentFilter = (userId, documentType, applicationId) => ({
   application_id: applicationId || null
 });
 
+/** ID / address / income evidence: images or PDF only (no Word). */
+const STRICT_VERIFICATION_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp'
+]);
+
+const EXPANDED_DOCUMENT_MIMES = new Set([
+  ...STRICT_VERIFICATION_MIMES,
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+]);
+
 const removeStoredFile = async (filePath) => {
   if (!filePath) {
     return;
@@ -120,6 +135,18 @@ exports.uploadDocument = async (req, res) => {
     const allowedTypes = ['ID_PROOF', 'ADDRESS_PROOF', 'INCOME_PROOF', 'MEDICAL_CERTIFICATE', 'OTHER'];
     if (!allowedTypes.includes(document_type)) {
       return res.status(400).json({ msg: 'Invalid document type' });
+    }
+
+    const strictDoc = ['ID_PROOF', 'ADDRESS_PROOF', 'INCOME_PROOF'].includes(document_type);
+    const allowedMimes = strictDoc ? STRICT_VERIFICATION_MIMES : EXPANDED_DOCUMENT_MIMES;
+    if (!allowedMimes.has(req.file.mimetype)) {
+      await removeStoredFile(req.file.path);
+      const hint = strictDoc
+        ? 'For this document, upload a PDF or a photo (JPG, PNG, WEBP) only.'
+        : 'Allowed types: PDF, JPG, PNG, WEBP, DOC, or DOCX.';
+      return res.status(400).json({
+        msg: `Invalid file type for ${document_type.replace(/_/g, ' ').toLowerCase()}. ${hint}`
+      });
     }
 
     // If application_id is provided, verify it belongs to the user

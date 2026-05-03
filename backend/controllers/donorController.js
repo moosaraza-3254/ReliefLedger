@@ -1,8 +1,17 @@
+const fs = require('fs/promises');
 const Donation = require('../models/Donation');
 const Transaction = require('../models/Transaction');
 const Application = require('../models/Application');
 const PDFDocument = require('pdfkit');
 const { v4: uuidv4 } = require('uuid');
+
+const PAYMENT_PROOF_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp'
+]);
 
 const maskAccountNumber = (value = '') => {
   if (!value) return '';
@@ -148,6 +157,19 @@ exports.makeDonation = async (req, res) => {
     }
     if (!req.file) {
       return res.status(400).json({ msg: 'Payment proof image is required' });
+    }
+
+    if (!PAYMENT_PROOF_MIMES.has(req.file.mimetype)) {
+      try {
+        await fs.unlink(req.file.path);
+      } catch (unlinkErr) {
+        if (unlinkErr.code !== 'ENOENT') {
+          console.error(unlinkErr.message);
+        }
+      }
+      return res.status(400).json({
+        msg: 'Payment proof must be a PDF or an image (JPG, PNG, or WEBP).'
+      });
     }
 
     const application = await Application.findById(application_id).populate('recipient_id', 'name email isFrozen');

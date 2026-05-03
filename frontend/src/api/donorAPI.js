@@ -14,18 +14,14 @@ const donorAPI = {
     try {
       const formData = new FormData();
       formData.append('application_id', application_id);
-      formData.append('amount', amount);
+      formData.append('amount', String(amount));
       formData.append('message', message);
       formData.append('payment_reference', payment_reference);
-      formData.append('proof_image', proof_image);
-      // Reused by backend upload middleware filename strategy.
+      // Reused by backend upload middleware filename strategy; must come before the file so multer sees it.
       formData.append('document_type', 'PAYMENT_PROOF');
+      formData.append('proof_image', proof_image);
 
-      const response = await axios.post('/api/donor/donate', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const response = await axios.post('/api/donor/donate', formData);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;

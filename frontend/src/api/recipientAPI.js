@@ -22,17 +22,13 @@ const recipientAPI = {
   uploadDocument: async (document_type, file, application_id = null) => {
     try {
       const formData = new FormData();
-      formData.append('document', file);
       formData.append('document_type', document_type);
       if (application_id) {
         formData.append('application_id', application_id);
       }
+      formData.append('document', file);
 
-      const response = await axios.post('/api/recipient/upload-document', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await axios.post('/api/recipient/upload-document', formData);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;

@@ -625,8 +625,13 @@ export default function RecipientDashboard() {
   const socketRef = useRef(null);
   const chatListRef = useRef(null);
   const fileInputRefs = useRef({});
+  const activeRecipientChatIdRef = useRef(null);
 
   useEffect(() => { loadRecipientData(); }, []);
+
+  useEffect(() => {
+    activeRecipientChatIdRef.current = activeRecipientChat?.id ?? null;
+  }, [activeRecipientChat]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -653,10 +658,10 @@ export default function RecipientDashboard() {
         .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
 
       setChatMessages((current) => {
-        if (!activeRecipientChat || activeRecipientChat.id !== threadId) {
+        if (activeRecipientChatIdRef.current !== threadId) {
           return current;
         }
-        if (current.some((item) => item.id === incomingMessage.id)) {
+        if (current.some((item) => String(item.id) === String(incomingMessage.id))) {
           return current;
         }
         return [...current, incomingMessage];
@@ -668,7 +673,7 @@ export default function RecipientDashboard() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeRecipientChat]);
+  }, []);
 
   useEffect(() => {
     if (!activeRecipientChat) {
@@ -763,9 +768,16 @@ export default function RecipientDashboard() {
 
   const handleUploadDocument = async (docType, file) => {
     if (!file) { setError('Please select a file to upload'); return; }
-    const allowedTypes = ['application/pdf','image/jpeg','image/jpg','image/png','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const strictVerification = ['ID_PROOF', 'ADDRESS_PROOF', 'INCOME_PROOF'].includes(docType);
+    const allowedTypes = strictVerification
+      ? ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+      : ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (!allowedTypes.includes(file.type)) {
-      setError('Invalid file type. Only PDF, JPG, PNG, DOC, and DOCX files are allowed.');
+      setError(
+        strictVerification
+          ? 'For ID, address, and income proof use a PDF or a photo (JPG, PNG, WEBP) only.'
+          : 'Invalid file type. Only PDF, JPG, PNG, WEBP, DOC, or DOCX files are allowed.'
+      );
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -886,7 +898,7 @@ export default function RecipientDashboard() {
     try {
       const payload = await recipientAPI.sendChatMessage(activeRecipientChat.id, chatInput.trim());
       setChatMessages((current) => {
-        if (current.some((item) => item.id === payload.message.id)) {
+        if (current.some((item) => String(item.id) === String(payload.message.id))) {
           return current;
         }
         return [...current, payload.message];
@@ -1137,7 +1149,7 @@ export default function RecipientDashboard() {
           <div className="rd-section">
             <div className="rd-section-title">Upload Documents</div>
             <div className="rd-section-divider" />
-            <p className="rd-doc-note">Upload required documents for verification — PDF, JPG, PNG, DOC, DOCX · Max 5MB each</p>
+            <p className="rd-doc-note">ID, address, and income proof: PDF or photo (JPG, PNG, WEBP) only. Other document types may also allow Word files. Max 5MB each.</p>
             <div className="rd-doc-grid">
               {DOCUMENT_TYPES.map(({ type, label }) => {
                 const document = documents[type];
@@ -1206,7 +1218,7 @@ export default function RecipientDashboard() {
               {submittingApplication ? 'Submitting…' : 'Submit Application →'}
             </button>
             {!hasAllRequiredDocuments && (
-              <p className="rd-doc-note">Upload ID Proof, Address Proof, and Income Proof to enable application submission.</p>
+              <p className="rd-doc-note">Upload ID, address, and income proof (PDF or clear photo) so admins can verify your application.</p>
             )}
           </div>
 

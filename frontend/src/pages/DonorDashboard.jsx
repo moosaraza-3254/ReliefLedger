@@ -484,8 +484,13 @@ export default function DonorDashboard() {
   const [openingApplicationId, setOpeningApplicationId] = useState('');
   const socketRef = useRef(null);
   const chatListRef = useRef(null);
+  const activeChatThreadIdRef = useRef(null);
 
   useEffect(() => { loadDonationData(); }, []);
+
+  useEffect(() => {
+    activeChatThreadIdRef.current = activeChatThread?.id ?? null;
+  }, [activeChatThread]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -503,10 +508,10 @@ export default function DonorDashboard() {
         .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
 
       setChatMessages((current) => {
-        if (!activeChatThread || activeChatThread.id !== threadId) {
+        if (activeChatThreadIdRef.current !== threadId) {
           return current;
         }
-        if (current.some((item) => item.id === incomingMessage.id)) {
+        if (current.some((item) => String(item.id) === String(incomingMessage.id))) {
           return current;
         }
         return [...current, incomingMessage];
@@ -518,7 +523,7 @@ export default function DonorDashboard() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeChatThread]);
+  }, []);
 
   useEffect(() => {
     if (!activeChatThread) {
@@ -708,7 +713,7 @@ export default function DonorDashboard() {
     try {
       const payload = await donorAPI.sendChatMessage(activeChatThread.id, chatInput.trim());
       setChatMessages((current) => {
-        if (current.some((item) => item.id === payload.message.id)) {
+        if (current.some((item) => String(item.id) === String(payload.message.id))) {
           return current;
         }
         return [...current, payload.message];
